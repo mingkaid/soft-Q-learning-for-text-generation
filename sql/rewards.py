@@ -488,8 +488,8 @@ class EntailmentClassifier3(object):
 
 
 class GPT2TopicReward(object):
-    WORDLISTS_BASE_DIR = "/workspace/soft-Q-learning/experiments/wordlists"
-    PPLM_INPUTS_FILE_NAME = "/workspace/soft-Q-learning/experiments/pplm-inputs.txt"
+    WORDLISTS_BASE_DIR = "/workspace/soft-Q-learning-for-text-generation/experiments/wordlists"
+    PPLM_INPUTS_FILE_NAME = "/workspace/soft-Q-learning-for-text-generation/experiments/pplm-inputs.txt"
     TOPICS = ["legal", "politics", "computers", "space", "religion", "science", "military"]
 
     def __init__(
@@ -692,6 +692,486 @@ class GPT2TopicReward(object):
             prompts=predictions,
             to_tensor=to_tensor,
             mode=mode)
+    
+class GPT2BLEUReward(object):
+    # WORDLISTS_BASE_DIR = "/workspace/soft-Q-learning-for-text-generation/experiments/wordlists"
+    TST_TEMPLATES_FILE_NAME = "/workspace/soft-Q-learning-for-text-generation/experiments/tst-templates.txt"
+    # TOPICS = ["legal", "politics", "computers", "space", "religion", "science", "military"]
+
+    def __init__(
+            self,
+            max_length: int = 60,
+            num_return_sequences_train: int = 2,
+            num_return_sequences_infer: int = 100,
+            # topic_scores_aggregator: Optional[Callable[[List[float]], Union[float, np.number]]] = None,
+            include_perplexity: bool = True,
+            return_intermediate_outputs: bool = False,
+    ) -> None:
+
+#         if topic_scores_aggregator is None:
+#             # Use the average by default
+#             topic_scores_aggregator = lambda scores: np.mean(scores)
+
+        if include_perplexity is True:
+            sql_utils.colorful_warning("Adding Perplexity-based Reward", bg="blue")
+
+        sql_utils.colorful_warning(f"max_length={max_length}", bg="blue")
+
+        # https://huggingface.co/gpt2
+        # https://huggingface.co/facebook/bart-large-mnli
+        self._generator = pipeline(
+            "text-generation",
+            model="distilgpt2",
+            device=0)
+#         self._classifier = pipeline(
+#             "zero-shot-classification",
+#             model="facebook/bart-large-mnli",
+#             device=0)
+
+        self._max_length = max_length
+        self._num_return_sequences_train = num_return_sequences_train
+        self._num_return_sequences_infer = num_return_sequences_infer
+#         self._topic_scores_aggregator = topic_scores_aggregator
+        # `topic_to_candidate_labels_map` is deprecated
+#         self._topic_to_candidate_labels_map, self._pplm_inputs = (
+#             self.load_topic_to_candidate_labels_map_and_pplm_inputs())
+        self._tst_templates = self.load_tst_templates()
+
+        # Technically, adding perplexity-based reward will break
+        # the scale, but we will ignore this for now since
+        # this number is relatively small.
+        self._include_perplexity = include_perplexity
+        # Do not set is to `True` during training, use it for debugging.
+        self._return_intermediate_outputs = return_intermediate_outputs
+        
+    def load_tst_templates(self) -> List[str]:
+        with open(self.TST_TEMPLATES_FILE_NAME) as f: 
+            tst_templates = [d.strip() for d in f.readlines()]
+        return tst_templates
+
+#     def load_topic_to_candidate_labels_map_and_pplm_inputs(self) -> Tuple[Dict[str, List[str]], List[str]]:
+#         topic_to_candidate_labels_map = {}
+#         for topic in self.TOPICS:
+#             file_name = os.path.join(
+#                 self.WORDLISTS_BASE_DIR,
+#                 f"{topic}.txt")
+
+#             with open(file_name) as f:
+#                 # There is one file that capitalized all words
+#                 # hence it's likely better to lower case all of
+#                 # them -- with the risk of hurting some words
+#                 topic_to_candidate_labels_map[topic] = [
+#                     d.strip().lower() for d in f.readlines()]
+
+#         with open(self.PPLM_INPUTS_FILE_NAME) as f:
+#             pplm_inputs = [d.strip() for d in f.readlines()]
+
+#         return topic_to_candidate_labels_map, pplm_inputs
+
+    def _convert_tokens_to_string(self, tokens: List[str]) -> List[str]: 
+        return [self._generator.tokenizer
+                .convert_tokens_to_string(s.split())
+                for s in tokens]
+
+    def _format_prompts(self, source_strings: List[str], prompt_strings: List[str]) -> List[str]:
+        templates = np.random.choice(
+            self._tst_templates,
+            size=len(prompt_strings),
+            # we use with-replacement here
+            replace=True,).tolist()
+        # print(templates)
+
+        return [
+            t.format(sentence_1=s_1, prompt=p) for t, s_1, p
+            in zip(templates, source_strings, prompt_strings)]
+
+    def _compute_nll_reward(self, sentences: List[str]) -> FloatTensor:
+        nlls, _ = compute_perplexities(
+            sentences=sentences,
+            model=self._generator.model,
+            tokenizer=self._generator.tokenizer)
+        # When the sentence has just one token,
+        # the NLL/perplexity will be `NaN`.
+        # Further, we use the negative NLL as the reward
+        return -torch.nan_to_num(nlls, nan=10.0).mean()
+
+#     def _check_classifier_outputs(
+#             self,
+#             candidate_labels: List[str],
+#             classifier_outputs: List[Dict],
+#     ) -> None:
+#         for output in classifier_outputs:
+#             if len(output["scores"]) != len(candidate_labels):
+#                 raise ValueError
+
+    def forward(self, sources: List[str], prompts: List[str], to_tensor: bool, mode: str) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
+        if mode not in ["train", "infer"]:
+            raise ValueError
+
+        if mode == "train":
+            num_return_sequences = self._num_return_sequences_train
+        if mode == "infer":
+            num_return_sequences = self._num_return_sequences_infer
+
+        # - List of length `len(prompts)`
+        #     - List of length `num_return_sequences`
+        #         - Dict of {"generated_text": str}
+        source_strings = self._convert_tokens_to_string(sources)
+        prompt_strings = self._convert_tokens_to_string(prompts)
+        formatted_prompts = self._format_prompts(source_strings, prompt_strings)
+        
+#         eos_token_id = (self._generator
+#                         .tokenizer
+#                         .convert_tokens_to_ids(['"',
+        generator_outputs: List[List[Dict[str, Any]]] = self._generator(
+            formatted_prompts,
+            max_length=self._max_length,
+            num_return_sequences=num_return_sequences,
+            # Only return generated text, without the prompt
+            return_full_text=False)
+
+        # all_classifier_outputs = []
+        rewards: List[FloatTensor] = []
+        quantities_to_log: Dict[str, List[FloatTensor]] = defaultdict(list)
+        for batch_index in range(len(prompts)):
+#             generated_texts = [
+#                 output["generated_text"] for output in
+#                 generator_outputs[batch_index]]
+            
+            generated_texts = []
+            for output in generator_outputs[batch_index]: 
+                text = output["generated_text"]
+                try: 
+                    end = text.index('"')
+                except ValueError: 
+                    end = len(text)
+                generated_texts.append(text[:end])
+            
+            if mode == "infer": 
+                print(f"Sentence 1: {source_strings[batch_index]};",
+                      f"Prompt: {prompt_strings[batch_index]};",
+                      f"Sentence 2: {generated_texts[0]}")
+
+            # - List of length `len(generated_texts)`
+            #     - Dict of {
+            #         "labels": List of length `num_topics`,
+            #         "scores": List of length `num_topics`,
+            #         "sequence": str,
+            #     }
+            try:
+                reference_texts = [source_strings[batch_index] for _ in generator_outputs[batch_index]]
+                
+                check_Xs_Ys_sizes(generated_texts, reference_texts)
+                
+                # Using a faster BLEU implementation during training
+                # `sacrebleu` is ~3X faster than `lightning`
+                # `sacrebleu-parallel` is ~3X faster than `sacrebleu`
+                bleus = [
+                    scb.sentence_bleu(
+                        hypothesis=x,
+                        references=[y])
+                    for x, y in zip(
+                        generated_texts,
+                        reference_texts)
+                ]
+                bleu_rewards = [b.score for b in bleus]
+                
+                reward = torch.tensor(bleu_rewards).float().mean()
+                quantities_to_log["bleu"].append(reward)
+                
+                if self._include_perplexity is True:
+                    nll_reward = (
+                        self._compute_nll_reward(
+                            sentences=generated_texts))
+                    reward = reward + nll_reward
+                    quantities_to_log["nll"].append(nll_reward)
+
+                rewards.append(reward)
+                # all_classifier_outputs.append(classifier_outputs)
+
+            except ValueError as err:
+                # This happens when the generated text itself includes the
+                # `</s>` token, which does happen and will cause the classifier to fail.
+                # So we just ignore this error and give a score of zero for this batch.
+                if str(err) != "All examples must have the same number of <eos> tokens.":
+                    raise err
+
+                click.secho("Encountered an error, skipping ...", bg="red")
+                rewards.append(torch.tensor(0.).to(device))
+
+        rewards_tensor = torch.stack(rewards)
+        rewards_log = dict(
+            (reward_key, torch.stack(reward_vals, dim=0).mean())
+            for reward_key, reward_vals in quantities_to_log.items())
+
+        if self._return_intermediate_outputs is True:
+            rewards_log["quantities_to_log"] = quantities_to_log  # type: ignore
+            rewards_log["formatted_prompts"] = formatted_prompts  # type: ignore
+            rewards_log["generator_outputs"] = generator_outputs  # type: ignore
+            # rewards_log["all_classifier_outputs"] = all_classifier_outputs  # type: ignore
+
+        if to_tensor is True:
+            return rewards_tensor, rewards_log
+        else:
+            return rewards_tensor.tolist(), rewards_log
+
+    def __call__(
+        self,
+        sources: List[str],
+        targets: List[str],
+        predictions: List[str],
+        to_tensor: bool,
+        mode: str,
+    ) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
+        return self.forward(
+            sources=sources,
+            prompts=predictions,
+            to_tensor=to_tensor,
+            mode=mode)
+    
+class GPT2BLEUSentimentReward(object):
+    TST_CLF_DIR = "/workspace/soft-Q-learning-for-text-generation/experiments/yelp_sentiment_classifier/results-bert-base/checkpoint-10410/"
+    TST_CLF_MODELNAME = 'bert-base-uncased'
+    TST_TEMPLATES_POS_FILE_NAME = "/workspace/soft-Q-learning-for-text-generation/experiments/tst-templates-yelp-positive.txt"
+    TST_TEMPLATES_NEG_FILE_NAME = "/workspace/soft-Q-learning-for-text-generation/experiments/tst-templates-yelp-negative.txt"
+    TST_TARGET_TO_LABEL_MAP = {'negative': 'LABEL_0', 'positive': 'LABEL_1'}
+
+    def __init__(
+            self,
+            max_length: int = 60,
+            num_return_sequences_train: int = 2,
+            num_return_sequences_infer: int = 100,
+            include_perplexity: bool = True,
+            return_intermediate_outputs: bool = False,
+    ) -> None:
+
+        if include_perplexity is True:
+            sql_utils.colorful_warning("Adding Perplexity-based Reward", bg="blue")
+
+        sql_utils.colorful_warning(f"max_length={max_length}", bg="blue")
+
+        # https://huggingface.co/gpt2
+        # https://huggingface.co/facebook/bart-large-mnli
+        self._generator = pipeline(
+            "text-generation",
+            model="distilgpt2",
+            device=0)
+        self._classifier = pipeline(
+            "sentiment-analysis",
+            model=self.TST_CLF_DIR,
+            tokenizer=self.TST_CLF_MODELNAME,
+            device=0)
+
+        self._max_length = max_length
+        self._num_return_sequences_train = num_return_sequences_train
+        self._num_return_sequences_infer = num_return_sequences_infer
+        self._tst_templates = self.load_tst_templates()
+
+        # Technically, adding perplexity-based reward will break
+        # the scale, but we will ignore this for now since
+        # this number is relatively small.
+        self._include_perplexity = include_perplexity
+        # Do not set is to `True` during training, use it for debugging.
+        self._return_intermediate_outputs = return_intermediate_outputs
+        
+    def load_tst_templates(self) -> List[str]:
+        with open(self.TST_TEMPLATES_POS_FILE_NAME) as f: 
+            tst_templates_pos = [d.strip() for d in f.readlines()]
+        with open(self.TST_TEMPLATES_NEG_FILE_NAME) as f: 
+            tst_templates_neg = [d.strip() for d in f.readlines()]
+        return {'positive': tst_templates_pos,
+                'negative': tst_templates_neg}
+
+    def _convert_tokens_to_string(self, tokens: List[str]) -> List[str]: 
+        return [self._generator.tokenizer
+                .convert_tokens_to_string(s.split())
+                for s in tokens]
+
+    def _format_prompts(self, 
+                        target_styles: List[str], 
+                        source_strings: List[str], 
+                        prompt_strings: List[str]) -> List[str]:
+        len_pos = len([s for s in target_styles if 'positive' in s])
+        
+        pos_templates = np.random.choice(
+            self._tst_templates['positive'],
+            size=len_pos,
+            # we use with-replacement here
+            replace=True,).tolist()
+        i = 0
+        
+        neg_templates = np.random.choice(
+            self._tst_templates['negative'],
+            size=len(prompt_strings)-len_pos,
+            # we use with-replacement here
+            replace=True,).tolist()
+        j = 0
+        
+        templates = []
+        for s in target_styles: 
+            if 'positive' in s: 
+                templates.append(pos_templates[i])
+                i += 1
+            else: 
+                templates.append(neg_templates[j])
+                j += 1
+        
+        # templates = [self._tst_templates[1] for _ in source_strings]
+        # print(templates)
+
+        return [
+            t.format(sentence_1=s_1, prompt=p) for t, s_1, p
+            in zip(templates, source_strings, prompt_strings)]
+
+    def _compute_nll_reward(self, sentences: List[str]) -> FloatTensor:
+        nlls, _ = compute_perplexities(
+            sentences=sentences,
+            model=self._generator.model,
+            tokenizer=self._generator.tokenizer)
+        # When the sentence has just one token,
+        # the NLL/perplexity will be `NaN`.
+        # Further, we use the negative NLL as the reward
+        return -torch.nan_to_num(nlls, nan=10.0).mean()
+
+    def forward(self, sources: List[str], target_styles: List[str], prompts: List[str], to_tensor: bool, mode: str) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
+        if mode not in ["train", "infer"]:
+            raise ValueError
+
+        if mode == "train":
+            num_return_sequences = self._num_return_sequences_train
+        if mode == "infer":
+            num_return_sequences = self._num_return_sequences_infer
+
+        # - List of length `len(prompts)`
+        #     - List of length `num_return_sequences`
+        #         - Dict of {"generated_text": str}
+        source_sentences = [' '.join(s.split(' ')[3:]) for s in sources]
+        source_strings = self._convert_tokens_to_string(source_sentences)
+        
+        prompt_strings = self._convert_tokens_to_string(prompts)
+        formatted_prompts = self._format_prompts(target_styles, source_strings, prompt_strings)
+        
+        target_style_strings = [self.TST_TARGET_TO_LABEL_MAP[t.split()[0]] for t in target_styles]
+        
+        
+#         eos_token_id = (self._generator
+#                         .tokenizer
+#                         .convert_tokens_to_ids(['"',
+        generator_outputs: List[List[Dict[str, Any]]] = self._generator(
+            formatted_prompts,
+            max_length=self._max_length,
+            num_return_sequences=num_return_sequences,
+            # Only return generated text, without the prompt
+            return_full_text=False)
+
+        all_classifier_outputs = []
+        rewards: List[FloatTensor] = []
+        quantities_to_log: Dict[str, List[FloatTensor]] = defaultdict(list)
+        for batch_index in range(len(prompts)):
+#             generated_texts = [
+#                 output["generated_text"] for output in
+#                 generator_outputs[batch_index]]
+            
+            generated_texts = []
+            for output in generator_outputs[batch_index]: 
+                text = output["generated_text"]
+                try: 
+                    end = text.index('"')
+                except ValueError: 
+                    end = len(text)
+                generated_texts.append(text[:end])
+            
+            if mode == "infer": 
+                print(formatted_prompts[batch_index])
+                print(f"Sentence 1: {source_strings[batch_index]};",
+                      f"Prompt: {prompt_strings[batch_index]};",
+                      f"Sentence 2: {generated_texts[0]}")
+
+            # - List of length `len(generated_texts)`
+            #     - Dict of {
+            #         "labels": List of length `num_topics`,
+            #         "scores": List of length `num_topics`,
+            #         "sequence": str,
+            #     }
+            try:
+                reference_texts = [source_strings[batch_index] for _ in generator_outputs[batch_index]]
+                
+                check_Xs_Ys_sizes(generated_texts, reference_texts)
+                
+                # Using a faster BLEU implementation during training
+                # `sacrebleu` is ~3X faster than `lightning`
+                # `sacrebleu-parallel` is ~3X faster than `sacrebleu`
+                bleus = [
+                    scb.sentence_bleu(
+                        hypothesis=x,
+                        references=[y])
+                    for x, y in zip(
+                        generated_texts,
+                        reference_texts)
+                ]
+                bleu_rewards = [b.score for b in bleus]
+                
+                reward = torch.tensor(bleu_rewards).float().mean()
+                quantities_to_log["bleu"].append(reward)
+                
+                classes = self._classifier(generated_texts, truncation=True)
+                label = target_style_strings[batch_index]
+                correct = [100 * (c['label'] == label) for c in classes]
+                acc = torch.tensor(correct).float().mean()
+                reward = reward + acc
+                quantities_to_log['acc'].append(acc)
+                
+                if self._include_perplexity is True:
+                    nll_reward = (
+                        self._compute_nll_reward(
+                            sentences=generated_texts))
+                    reward = reward + nll_reward
+                    quantities_to_log["nll"].append(nll_reward)
+
+                rewards.append(reward)
+                # all_classifier_outputs.append(classifier_outputs)
+
+            except ValueError as err:
+                # This happens when the generated text itself includes the
+                # `</s>` token, which does happen and will cause the classifier to fail.
+                # So we just ignore this error and give a score of zero for this batch.
+                if str(err) != "All examples must have the same number of <eos> tokens.":
+                    raise err
+
+                click.secho("Encountered an error, skipping ...", bg="red")
+                rewards.append(torch.tensor(0.).to(device))
+
+        rewards_tensor = torch.stack(rewards)
+        rewards_log = dict(
+            (reward_key, torch.stack(reward_vals, dim=0).mean())
+            for reward_key, reward_vals in quantities_to_log.items())
+
+        if self._return_intermediate_outputs is True:
+            rewards_log["quantities_to_log"] = quantities_to_log  # type: ignore
+            rewards_log["formatted_prompts"] = formatted_prompts  # type: ignore
+            rewards_log["generator_outputs"] = generator_outputs  # type: ignore
+            # rewards_log["all_classifier_outputs"] = all_classifier_outputs  # type: ignore
+
+        if to_tensor is True:
+            return rewards_tensor, rewards_log
+        else:
+            return rewards_tensor.tolist(), rewards_log
+
+    def __call__(
+        self,
+        sources: List[str],
+        targets: List[str],
+        predictions: List[str],
+        to_tensor: bool,
+        mode: str,
+    ) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
+        return self.forward(
+            sources=sources,
+            target_styles=targets,
+            prompts=predictions,
+            to_tensor=to_tensor,
+            mode=mode)
+
 
 
 class PrefixSentimentClassifier(object):
@@ -772,6 +1252,8 @@ reward_name_to_cls_map = {
     "gpt2-topic": GPT2TopicReward,
     "sentiment": PrefixSentimentClassifier,
     "toxicity": ToxificationClassifier,
+    "gpt2-bleu": GPT2BLEUReward,
+    "gpt2-bleu-sentiment": GPT2BLEUSentimentReward
 }
 
 

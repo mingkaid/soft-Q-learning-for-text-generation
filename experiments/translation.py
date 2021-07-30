@@ -201,6 +201,7 @@ def main(config: omegaconf.DictConfig) -> None:
     wandb.watch(model, log=None)
 
     def _train_epoch(training_mode: str) -> List[Dict]:
+        print('Start Train')
         data_iterator.switch_to_train_data()
         model.train()
 
@@ -290,6 +291,7 @@ def main(config: omegaconf.DictConfig) -> None:
             loss_list = []
             additional_info_list = []
             for mode in modes:
+                # print(batch)
                 _loss, _additional_info = model(
                     mode=mode,
                     batch=batch)
@@ -312,16 +314,21 @@ def main(config: omegaconf.DictConfig) -> None:
             if (config.num_batches_per_epoch is not None and
                     config.num_batches_per_epoch == step):
                 break
+                
+        print('Finish Train')
 
         return epoch_logs
 
     @torch.no_grad()
     def _eval_epoch(mode: str, save_base_path: Optional[str] = None) -> Dict[str, np.number]:
+        print('Running Eval')
         if mode == "val":
+            # print('Running validation')
             data_iterator.switch_to_val_data()
             unique_pairs_file = getattr(
                 config_data, "val_unique_pairs_file", None)
         else:
+            # print('Running test')
             data_iterator.switch_to_test_data()
             unique_pairs_file = getattr(
                 config_data, "test_unique_pairs_file", None)
@@ -387,7 +394,7 @@ def main(config: omegaconf.DictConfig) -> None:
                 list_of_references=refs,
                 hypotheses=hypos)
 
-        if config.reward_name in ["rouge", "bleurt", "sentiment", "gpt2-topic",
+        if config.reward_name in ["rouge", "bleurt", "sentiment", "gpt2-topic", "gpt2-bleu", "gpt2-bleu-sentiment",
                                   "entailment", "entailment2", "entailment3", "toxicity"]:
             if unique_pairs_file is not None:
                 colorful_warning("Only taking the first reference. "
@@ -416,6 +423,8 @@ def main(config: omegaconf.DictConfig) -> None:
         add_prefix_to_dict_keys_inplace(
             gem_scores_dict,
             prefix=f"{mode}/GEM/")
+        
+        print('Finish Eval')
 
         return unionize_dicts([
             score_log,
