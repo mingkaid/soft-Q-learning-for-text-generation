@@ -1412,20 +1412,21 @@ class GPT2SentimentNoInputReward(object):
             mode=mode)
     
 class GPT2SentimentBLEUNoInputReward(object):
-    TST_TEMPLATES_FILE_NAME = "/workspace/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task.txt"
+    TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task.txt"
     # TST_TEMPLATES_FILE_NAME = "/workspace/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-no-source.txt"
-    TST_CLF_CONFIG = dict(model=("/workspace/soft-Q-learning-for-text-generation/experiments/yelp_sentiment_classifier/"
+    TST_CLF_CONFIG = dict(model=("/jupyter/prompt-generation/soft-Q-learning-for-text-generation/"
+                                 "experiments/yelp_sentiment_classifier/"
                                  "results-bert-base/checkpoint-10410/"),
                           tokenizer='bert-base-uncased')
 
     def __init__(
             self,
-            max_length: int = 60,
-            num_return_sequences_train: int = 2,
-            num_return_sequences_infer: int = 100,
+            max_length: int = 30,
+            num_return_sequences_train: int = 128,
+            num_return_sequences_infer: int = 128,
             # topic_scores_aggregator: Optional[Callable[[List[float]], Union[float, np.number]]] = None,
-            include_perplexity: bool = True,
-            return_intermediate_outputs: bool = False,
+            include_perplexity: bool = False,
+            return_intermediate_outputs: bool = True,
     ) -> None:
 
         if include_perplexity is True:
@@ -1435,9 +1436,11 @@ class GPT2SentimentBLEUNoInputReward(object):
 
         # https://huggingface.co/gpt2
         # https://huggingface.co/facebook/bart-large-mnli
+        tokenizer = AutoTokenizer.from_pretrained('distilgpt2', pad_token='<|endoftext|>')
         self._generator = pipeline(
             "text-generation",
             model="distilgpt2",
+            tokenizer=tokenizer,
             device=0)
         self._classifier = pipeline(
             "sentiment-analysis",
@@ -1470,10 +1473,10 @@ class GPT2SentimentBLEUNoInputReward(object):
     def _load_tst_inputs(self) -> Dict[Tuple[Any], List[str]]: 
         tst_inputs = {}
         # tokenizer = self._generator.tokenizer
-        filepath_train_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
-        filepath_train_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
-        filepath_dev_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
-        filepath_dev_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
+        filepath_train_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
+        filepath_train_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
+        filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
+        filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
         
         with open(filepath_train_0) as f: 
             sentences_train_0 = [line.strip() for line in f]
@@ -1484,10 +1487,11 @@ class GPT2SentimentBLEUNoInputReward(object):
         with open(filepath_dev_1) as f: 
             sentences_dev_1 = [line.strip() for line in f]
             
-        tst_inputs[('train', 'LABEL_0')] = sentences_train_1
-        tst_inputs[('train', 'LABEL_1')] = sentences_train_0
-        tst_inputs[('infer', 'LABEL_0')] = sentences_dev_1[:5]
-        tst_inputs[('infer', 'LABEL_1')] = sentences_dev_0[:5]
+        idx = 43
+        tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
+        tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:]
+        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[idx:(idx+5)]
+        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[idx:(idx+5)]
         
         return tst_inputs
 
@@ -1552,10 +1556,13 @@ class GPT2SentimentBLEUNoInputReward(object):
         source_strings = self._get_inputs(mode, target_labels)
         prompt_strings = self._convert_tokens_to_string(prompts)
         formatted_prompts = self._format_prompts(source_strings, prompt_strings)
+        input_length = len(self._generator.tokenizer(source_strings[0])['input_ids'])
         
         generator_outputs: List[List[Dict[str, Any]]] = self._generator(
             formatted_prompts,
-            max_length=self._max_length,
+            # max_length=self._max_length,
+            max_new_tokens=input_length,
+            pad_token_id=50256,
             num_return_sequences=num_return_sequences,
             # Only return generated text, without the prompt
             return_full_text=False)
@@ -1609,22 +1616,26 @@ class GPT2SentimentBLEUNoInputReward(object):
 
                 classes = self._classifier(generated_texts, truncation=True)
                 label = target_labels[batch_index]
-                correct = [100 * (c['label'] == label) for c in classes]
+                correct = [(c['label'] == label) for c in classes]
                 acc = torch.tensor(correct).float().mean()
                 quantities_to_log['acc'].append(acc)
+                probs = [(c['label'] == label) * c['score'] + (c['label'] != label) * (1 - c['score']) for c in classes]
+                style = torch.tensor(probs).float().mean()
+                quantities_to_log['style'].append(style)
                 
                 
-#                 style_rewards = [100 * ((c['label'] == label) * c['score'] + (c['label'] != label) * (1 - c['score']))\
-#                                   for c in classes]
-#                 style_strength = torch.tensor(style_rewards).float().mean()
-#                 quantities_to_log['style_strength'].append(style_strength)
-                reward = (bleu + acc) / 2
-                # prod_rewards = [10 * b * c for b, c in zip(bleu_rewards, correct)]
-                # reward = torch.tensor(prod_rewards).float().mean()
+                sum_rewards = [(b + 1.05 * 100 * c) / (1 + 1) for b, c, p in zip(bleu_rewards, correct, probs)]
+                # print(rewards)
+                reward = torch.tensor(sum_rewards).float().max()
+                # reward = (bleu + 1.05 * 100 * acc) / (1 + 1.05)
+                # reward = (bleu + 1.05 * 100 * style) / (1 + 1.05)
                 quantities_to_log["sum_reward"].append(reward)
+#                 prod_rewards = [b * c for b, c in zip(bleu_rewards, correct)]
+#                 reward = torch.tensor(prod_rewards).float().mean()
+#                 quantities_to_log["prod_reward"].append(reward)
                 
-                if label == 'LABEL_0': quantities_to_log['acc_0'].append(acc)
-                elif label == 'LABEL_1': quantities_to_log['acc_1'].append(acc)
+#                 if label == 'LABEL_0': quantities_to_log['acc_0'].append(acc)
+#                 elif label == 'LABEL_1': quantities_to_log['acc_1'].append(acc)
                 
                 if self._include_perplexity is True:
                     nll_reward = (
@@ -1633,6 +1644,12 @@ class GPT2SentimentBLEUNoInputReward(object):
                     reward = reward + nll_reward
                     quantities_to_log["nll"].append(nll_reward)
 
+                print(prompts[batch_index], '|', 
+                      generated_texts[0], '|', 
+                      'BLEU:', round(bleu.item(), 2), '|',
+                      'ACC:', round(acc.item(), 2), '|',
+                      'STYLE:', round(style.item(), 2), '|',
+                      'Reward:', round(reward.item(), 2))
                 rewards.append(reward)
 
             except ValueError as err:
@@ -1645,6 +1662,218 @@ class GPT2SentimentBLEUNoInputReward(object):
                 click.secho("Encountered an error, skipping ...", bg="red")
                 rewards.append(torch.tensor(0.).to(device))
 
+        rewards_tensor = torch.stack(rewards)
+        rewards_log = dict(
+            (reward_key, torch.stack(reward_vals, dim=0).mean())
+            for reward_key, reward_vals in quantities_to_log.items())
+
+        if self._return_intermediate_outputs is True:
+            rewards_log["quantities_to_log"] = quantities_to_log  # type: ignore
+            rewards_log["formatted_prompts"] = formatted_prompts  # type: ignore
+            rewards_log["generator_outputs"] = generator_outputs  # type: ignore
+            # rewards_log["all_classifier_outputs"] = all_classifier_outputs  # type: ignore
+
+        if to_tensor is True:
+            return rewards_tensor, rewards_log
+        else:
+            return rewards_tensor.tolist(), rewards_log
+
+    def __call__(
+        self,
+        sources: List[str],
+        targets: List[str],
+        predictions: List[str],
+        to_tensor: bool,
+        mode: str,
+    ) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
+        return self.forward(
+            target_labels=sources,
+            prompts=predictions,
+            to_tensor=to_tensor,
+            mode=mode)
+    
+import pandas as pd
+@torch.no_grad()
+def compute_triggered_output_perplexities(
+        triggers: List[str],
+        sentences: List[str],
+        model: PreTrainedModel,
+        tokenizer: PreTrainedTokenizerFast,
+) -> Tuple[FloatTensor, FloatTensor]:
+
+    nlls = []
+    for trigger, sentence in zip(triggers, sentences):
+        print(trigger, sentence)
+        tensor_trigger = tokenizer(trigger, return_tensors='pt').input_ids.to(device)
+        tensor_sentence = tokenizer(sentence, return_tensors='pt').input_ids.to(device)
+        
+        mask_out = -100 * torch.ones_like(tensor_trigger)
+        lm_input = torch.cat((tensor_trigger, tensor_sentence), dim=1)
+        mask_and_target = torch.cat((mask_out, tensor_sentence), dim=1)
+        
+        try:
+            # labels **are shifted** inside the model
+            outputs = model(
+                lm_input,
+                labels=mask_and_target)
+            nll = outputs[0]
+        except RuntimeError:
+            # Could happen when the input is empty
+            nll = torch.tensor(float("nan")).to(device)
+
+        nlls.append(nll)
+
+    stacked_nlls = torch.stack(nlls, dim=0)
+    return stacked_nlls, stacked_nlls.exp()
+
+class GPT2TriggerReward(object):
+    TST_TEMPLATES_FILE_NAME = "/workspace/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task.txt"
+    TST_CLF_CONFIG = dict(model=("/workspace/soft-Q-learning-for-text-generation/experiments/yelp_sentiment_classifier/"
+                                 "results-bert-base/checkpoint-10410/"),
+                          tokenizer='bert-base-uncased')
+
+    def __init__(
+            self,
+            max_length: int = 60,
+            num_return_sequences_train: int = 2,
+            num_return_sequences_infer: int = 100,
+            # topic_scores_aggregator: Optional[Callable[[List[float]], Union[float, np.number]]] = None,
+            include_perplexity: bool = True,
+            return_intermediate_outputs: bool = False,
+    ) -> None:
+
+        if include_perplexity is True:
+            sql_utils.colorful_warning("Adding Perplexity-based Reward", bg="blue")
+
+        sql_utils.colorful_warning(f"max_length={max_length}", bg="blue")
+
+        # https://huggingface.co/gpt2
+        # https://huggingface.co/facebook/bart-large-mnli
+        self._generator = pipeline(
+            "text-generation",
+            model="gpt2",
+            device=0)
+
+        self._max_length = max_length
+        self._num_return_sequences_train = num_return_sequences_train
+        self._num_return_sequences_infer = num_return_sequences_infer
+        self._tst_templates = self.load_tst_templates()
+        self._tst_inputs = self._load_tst_inputs()
+        self._tst_inputs_idx = {('train', 'trigger'): 0, 
+                                ('infer', 'trigger'): 0}
+
+        # Technically, adding perplexity-based reward will break
+        # the scale, but we will ignore this for now since
+        # this number is relatively small.
+        self._include_perplexity = include_perplexity
+        # Do not set is to `True` during training, use it for debugging.
+        self._return_intermediate_outputs = return_intermediate_outputs
+        
+    def load_tst_templates(self) -> List[str]:
+        with open(self.TST_TEMPLATES_FILE_NAME) as f: 
+            tst_templates = [d.strip() for d in f.readlines()]
+        return tst_templates
+    
+    def _load_tst_inputs(self) -> Dict[Tuple[Any], List[str]]: 
+        tst_inputs = {}
+        
+        data_path = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-trigger/yelp-gold.csv"
+        df = pd.read_csv(data_path)
+        cutoff = int(0.8 * len(df))
+        
+        df_train = df.iloc[:cutoff]
+        df_infer = df.iloc[cutoff:]
+            
+        tst_inputs[('train', 'trigger')] = (df_train.text_1.tolist(), df_train.text_2.tolist())
+        tst_inputs[('infer', 'trigger')] = (df_infer.text_1.tolist(), df_infer.text_2.tolist())
+        
+        return tst_inputs
+
+    def _convert_tokens_to_string(self, tokens: List[str]) -> List[str]: 
+        return [self._generator.tokenizer
+                .convert_tokens_to_string(s.split())
+                for s in tokens]
+
+    def _format_prompts(self, 
+                        source_strings: List[str], 
+                        prompt_strings: List[str]) -> List[str]:
+        template = self._tst_templates[0]
+        
+#         return [
+#             template.format(prompt=p) for s_1, p
+#             in zip(source_strings, prompt_strings)]
+
+        return [
+            template.format(sentence_1=s_1, prompt=p) for s_1, p
+            in zip(source_strings, prompt_strings)]
+
+    def _compute_nll_reward(self, triggers: List[str], sentences: List[str]) -> FloatTensor:
+        nlls, _ = compute_triggered_output_perplexities(
+            triggers=triggers,
+            sentences=sentences,
+            model=self._generator.model,
+            tokenizer=self._generator.tokenizer)
+        # When the sentence has just one token,
+        # the NLL/perplexity will be `NaN`.
+        # Further, we use the negative NLL as the reward
+        return -torch.nan_to_num(nlls, nan=10.0).mean()
+    
+    def _get_inputs_and_targets(self, mode: str, target_labels: List[str]): 
+        # data_0 = self._tst_inputs[(mode, 'LABEL_0')]
+        # data_1 = self._tst_inputs[(mode, 'LABEL_1')]
+        
+        # idx_0 = self._tst_inputs_idx[(mode, 'LABEL_0')]
+        # idx_1 = self._tst_inputs_idx[(mode, 'LABEL_1')]
+        
+        inputs, targets = [], []
+        for i, label in enumerate(target_labels): 
+            idx = self._tst_inputs_idx[(mode, label)]
+            text_1, text_2 = self._tst_inputs[(mode, label)]
+            
+            inputs.append(text_1[0])
+            targets.append(text_2[0] + '"')
+            idx += 1
+            idx %= len(text_1)
+            self._tst_inputs_idx[(mode, label)] = idx
+        
+        return inputs, targets
+
+    def forward(self, target_labels: List[str], prompts: List[str], to_tensor: bool, mode: str) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
+        if mode not in ["train", "infer"]:
+            raise ValueError
+        assert all([label in ['trigger'] for label in target_labels])
+
+        if mode == "train":
+            num_return_sequences = self._num_return_sequences_train
+        if mode == "infer":
+            num_return_sequences = self._num_return_sequences_infer
+
+        # - List of length `len(prompts)`
+        #     - List of length `num_return_sequences`
+        #         - Dict of {"generated_text": str}
+        source_strings, target_strings = self._get_inputs_and_targets(mode, target_labels)
+        prompt_strings = self._convert_tokens_to_string(prompts)
+        formatted_prompts = self._format_prompts(source_strings, prompt_strings)
+        
+#         generator_outputs: List[List[Dict[str, Any]]] = self._generator(
+#             formatted_prompts,
+#             max_length=self._max_length,
+#             num_return_sequences=num_return_sequences,
+#             # Only return generated text, without the prompt
+#             return_full_text=False)
+
+        rewards: List[FloatTensor] = []
+        quantities_to_log: Dict[str, List[FloatTensor]] = defaultdict(list)
+        for formatted_prompt, target in zip(formatted_prompts, target_strings): 
+            nll_reward = (
+                    self._compute_nll_reward(
+                        triggers=[formatted_prompt],
+                        sentences=[target]))
+            reward = nll_reward
+            quantities_to_log["nll"].append(nll_reward)
+
+            rewards.append(reward)
+            
         rewards_tensor = torch.stack(rewards)
         rewards_log = dict(
             (reward_key, torch.stack(reward_vals, dim=0).mean())
@@ -2348,6 +2577,7 @@ reward_name_to_cls_map = {
     "gpt2-sentiment-no-input": GPT2SentimentNoInputReward,
     "gpt2-sentiment-bleu-no-input": GPT2SentimentBLEUNoInputReward,
     "gpt2-sentiment-bertscore-no-input": GPT2SentimentBERTScoreNoInputReward,
+    'gpt2-trigger': GPT2TriggerReward,
     "gpt2-bleu-sentiment": GPT2BLEUSentimentReward
 }
 

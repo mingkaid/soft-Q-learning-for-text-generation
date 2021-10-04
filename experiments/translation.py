@@ -397,6 +397,7 @@ def main(config: omegaconf.DictConfig) -> None:
         if config.reward_name in ["rouge", "bleurt", "sentiment", "gpt2-topic", "gpt2-bleu", 
                                   "gpt2-bleu-sentiment", "gpt2-bleu-no-input", "gpt2-sentiment-no-input",
                                   "gpt2-sentiment-bleu-no-input", "gpt2-sentiment-bertscore-no-input",
+                                  'gpt2-trigger',
                                   "entailment", "entailment2", "entailment3", "toxicity"]:
             if unique_pairs_file is not None:
                 colorful_warning("Only taking the first reference. "
@@ -413,24 +414,24 @@ def main(config: omegaconf.DictConfig) -> None:
             score = score.mean().item()
 
         # Scores for the GEM benchmark
-        gem_scores_dict = compute_GEM_metrics_from_outputs(
-            sources=srcs,
-            list_of_targets=refs,
-            predictions=hypos,
-            base_file_name_to_dump=save_base_path)
+#         gem_scores_dict = compute_GEM_metrics_from_outputs(
+#             sources=srcs,
+#             list_of_targets=refs,
+#             predictions=hypos,
+#             base_file_name_to_dump=save_base_path)
 
         add_prefix_to_dict_keys_inplace(
             score_log,
             prefix=f"{mode}/rewards/")
-        add_prefix_to_dict_keys_inplace(
-            gem_scores_dict,
-            prefix=f"{mode}/GEM/")
+#         add_prefix_to_dict_keys_inplace(
+#             gem_scores_dict,
+#             prefix=f"{mode}/GEM/")
         
         print('Finish Eval')
 
         return unionize_dicts([
             score_log,
-            gem_scores_dict,
+            # gem_scores_dict,
             {
                 f"{mode}/score": score,
                 f"{mode}/target_length": np.mean([

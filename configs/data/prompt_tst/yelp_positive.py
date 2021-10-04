@@ -1,7 +1,7 @@
 import os
 
 
-base_path = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only"
+base_path = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only"
 max_source_length = 512
 max_decoding_length = 5
 
