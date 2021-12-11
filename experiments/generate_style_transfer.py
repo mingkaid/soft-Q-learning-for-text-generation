@@ -173,11 +173,16 @@ def load_yelp_dev_data(sentiment):
                                           f'/data/yelp-gpt2-control-only/raw/sentiment.dev.{sentiment}', 'r')]
     return data
     
+def load_yelp_imat_data(sentiment): 
+    data = [line.strip() for line in open(f'/jupyter/prompt-generation/IMaT/data/yelp/test/test.{sentiment}', 'r')]
+    return data
 
 LOAD_DATA_FNS = {'yelp_positive': lambda: load_yelp_test_data(1),
                  'yelp_negative': lambda: load_yelp_test_data(0),
                  'yelp_positive_dev': lambda: load_yelp_dev_data(1),
-                 'yelp_negative_dev': lambda: load_yelp_dev_data(0)}
+                 'yelp_negative_dev': lambda: load_yelp_dev_data(0),
+                 'yelp_positive_imat': lambda: load_yelp_imat_data(1),
+                 'yelp_negative_imat': lambda: load_yelp_imat_data(0)}
 
 reward_fn0 = lambda b, c, p, f: (1.0 * b + 1.05 * 100 * (p + p)/2) / (1.0 + 1.05)
 reward_fn1 = lambda b, c, p, f: (1.0 * b + 1.05 * 100 * (p + c)/2) / (1.0 + 1.05)
@@ -187,7 +192,8 @@ REWARD_FNS = {'intensity': reward_fn0,
                     'correct': reward_fn2}
 
 PROMPTS = {'yelp_pos_to_neg': 'Ġsinister Ġsinister Ġsinister Ġsinister Ġsinister',
-           'yelp_neg_to_pos': 'Ġattribute Ġattribute Ġattribute Ġattribute Ġattribute'}
+           'yelp_neg_to_pos': 'Ġattribute Ġattribute Ġattribute Ġattribute Ġattribute',
+           'null': '',}
 
 def main(reward_name, 
          target_reward,

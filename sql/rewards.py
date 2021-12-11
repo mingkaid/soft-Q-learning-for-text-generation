@@ -1412,7 +1412,8 @@ class GPT2SentimentNoInputReward(object):
             mode=mode)
     
 class GPT2SentimentBLEUNoInputReward(object):
-    TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task.txt"
+#     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task.txt"
+    TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix.txt"
     # TST_TEMPLATES_FILE_NAME = "/workspace/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-no-source.txt"
     TST_CLF_CONFIG = dict(model=("/jupyter/prompt-generation/soft-Q-learning-for-text-generation/"
                                  "experiments/yelp_sentiment_classifier/"
@@ -1421,7 +1422,7 @@ class GPT2SentimentBLEUNoInputReward(object):
 
     def __init__(
             self,
-            max_length: int = 30,
+            max_length: int = 40,
             num_return_sequences_train: int = 128,
             num_return_sequences_infer: int = 128,
             # topic_scores_aggregator: Optional[Callable[[List[float]], Union[float, np.number]]] = None,
@@ -1487,11 +1488,12 @@ class GPT2SentimentBLEUNoInputReward(object):
         with open(filepath_dev_1) as f: 
             sentences_dev_1 = [line.strip() for line in f]
             
-        idx = 43
-        tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
-        tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:]
-        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[idx:(idx+5)]
-        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[idx:(idx+5)]
+        # idx = 43
+        n_examples = 16
+        tst_inputs[('train', 'LABEL_0')] = sentences_train_1[:n_examples]
+        tst_inputs[('train', 'LABEL_1')] = sentences_train_0[:n_examples]
+        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[:n_examples]
+        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[:n_examples]
         
         return tst_inputs
 
@@ -1533,7 +1535,7 @@ class GPT2SentimentBLEUNoInputReward(object):
             idx = self._tst_inputs_idx[(mode, label)]
             data = self._tst_inputs[(mode, label)]
             
-            inputs.append(data[0])
+            inputs.append(data[idx])
             idx += 1
             idx %= len(data)
             self._tst_inputs_idx[(mode, label)] = idx
@@ -1556,7 +1558,8 @@ class GPT2SentimentBLEUNoInputReward(object):
         source_strings = self._get_inputs(mode, target_labels)
         prompt_strings = self._convert_tokens_to_string(prompts)
         formatted_prompts = self._format_prompts(source_strings, prompt_strings)
-        input_length = len(self._generator.tokenizer(source_strings[0])['input_ids'])
+#         input_length = len(self._generator.tokenizer(source_strings[0])['input_ids'])
+        input_length = max([len(tokens) for tokens in self._generator.tokenizer(source_strings)['input_ids']])
         
         generator_outputs: List[List[Dict[str, Any]]] = self._generator(
             formatted_prompts,
@@ -1626,10 +1629,17 @@ class GPT2SentimentBLEUNoInputReward(object):
                 
                 sum_rewards = [(b + 1.05 * 100 * c) / (1 + 1) for b, c, p in zip(bleu_rewards, correct, probs)]
                 # print(rewards)
-                reward = torch.tensor(sum_rewards).float().max()
+                k = 5
+                sum_reward_topk, indices = torch.topk(torch.tensor(sum_rewards).float(), k)
+                reward = sum_reward_topk.mean()
+                max_reward = torch.tensor(sum_rewards).float().max()
+                quantities_to_log["topk_sum_reward"].append(reward)
+                quantities_to_log["max_sum_reward"].append(max_reward)
+                
+                # reward = torch.tensor(sum_rewards).float().max()
                 # reward = (bleu + 1.05 * 100 * acc) / (1 + 1.05)
                 # reward = (bleu + 1.05 * 100 * style) / (1 + 1.05)
-                quantities_to_log["sum_reward"].append(reward)
+                # quantities_to_log["sum_reward"].append(reward)
 #                 prod_rewards = [b * c for b, c in zip(bleu_rewards, correct)]
 #                 reward = torch.tensor(prod_rewards).float().mean()
 #                 quantities_to_log["prod_reward"].append(reward)
@@ -1644,7 +1654,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                     reward = reward + nll_reward
                     quantities_to_log["nll"].append(nll_reward)
 
-                print(prompts[batch_index], '|', 
+                print(formatted_prompts[batch_index], '|', 
                       generated_texts[0], '|', 
                       'BLEU:', round(bleu.item(), 2), '|',
                       'ACC:', round(acc.item(), 2), '|',

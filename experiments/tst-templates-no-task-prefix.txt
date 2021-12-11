@@ -1,0 +1,1 @@
+{prompt} Sentence 1: "{sentence_1}" Sentence 2: "
