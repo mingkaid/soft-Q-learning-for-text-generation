@@ -1,0 +1,4 @@
+Task: Write the same sentence twice. Sentence 1: "{sentence_1}" {prompt} Sentence 2: "
+Task: Write two sentences that are the same. Sentence 1: "{sentence_1}" {prompt} Sentence 2: "
+Task: Write two sentences with the same meaning. Sentence 1: "{sentence_1}" {prompt} Sentence 2: "
+Task: Repeat the same sentence twice. Sentence 1: "{sentence_1}" {prompt} Sentence 2: "

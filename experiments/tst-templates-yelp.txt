@@ -1,0 +1,2 @@
+Task: Write two similar sentences with opposite sentiments. Sentence 1: "{sentence_1}" {prompt} Sentence 2: "
+Task: Write two sentences with the same meaning but different sentiments. Sentence 1: "{sentence_1}" {prompt} Sentence 2: "

@@ -1,0 +1,3 @@
+Sentence 1: "{sentence_1}" Task: Write a similar sentence with positive sentiment. {prompt} Sentence 2: "
+Task: Write two sentences, one sad and one happy. Sentence 1: "{sentence_1}" {prompt} Sentence 2: "
+Sentence 1: "{sentence_1}" Task: Write a similar but happier sentence. {prompt} Sentence 2: "

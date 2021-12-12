@@ -1,5 +1,5 @@
-jupyterlab
-wandb
+jupyterlab==3.0.16
+wandb==0.11.0
 scikit-learn
 matplotlib
 overrides

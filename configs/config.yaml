@@ -32,6 +32,8 @@ translation:
     # Rewards
     reward_name: "???"
     reward_shaping: true
+    reward_old_min: 0
+    reward_old_max: 100
     reward_shaping_min: -10
     reward_shaping_max: 10
     # Warmup

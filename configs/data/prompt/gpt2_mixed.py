@@ -1,7 +1,7 @@
 import os
 
 
-base_path = "/export/share/Data/pplm-gpt2"
+base_path = "/workspace/soft-Q-learning-for-text-generation/data/pplm-gpt2"
 max_decoding_length = 5
 
 source_vocab_file = os.path.join(base_path, "vocab.source")

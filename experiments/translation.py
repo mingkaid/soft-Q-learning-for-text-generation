@@ -20,6 +20,7 @@ import wandb
 import click
 import importlib
 import omegaconf
+import random
 import numpy as np
 import texar.torch as tx
 from copy import deepcopy
@@ -40,6 +41,14 @@ from sql.misc_utils import nested_detach_and_clone
 from configs.models import config_model_optimizer
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 PREPROCESS_TARGET_TEXTS = False
+
+
+def set_random_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def _modify_model_config(config: omegaconf.DictConfig) -> None:
@@ -114,6 +123,8 @@ def prepare_model(
         target_update_method=config.target_sync_method,
         target_learning_rate=config.target_learning_rate,
         reward_shaping=config.reward_shaping,
+        reward_old_min=config.reward_old_min,
+        reward_old_max=config.reward_old_max,
         reward_shaping_min=config.reward_shaping_min,
         reward_shaping_max=config.reward_shaping_max,
         sql_loss_coefficients=config.sql_loss_coefficients,
@@ -171,6 +182,7 @@ def prepare_train_ops(
 
 
 def main(config: omegaconf.DictConfig) -> None:
+    set_random_seed(2)
     print(click.style(omegaconf.OmegaConf.to_yaml(config), fg="red"))
     # Looks like a hack
     wandb.init(project="soft-Q-learning", config=eval(str(config)))
@@ -201,6 +213,7 @@ def main(config: omegaconf.DictConfig) -> None:
     wandb.watch(model, log=None)
 
     def _train_epoch(training_mode: str) -> List[Dict]:
+        print('Start Train')
         data_iterator.switch_to_train_data()
         model.train()
 
@@ -290,6 +303,7 @@ def main(config: omegaconf.DictConfig) -> None:
             loss_list = []
             additional_info_list = []
             for mode in modes:
+                # print(batch)
                 _loss, _additional_info = model(
                     mode=mode,
                     batch=batch)
@@ -312,16 +326,21 @@ def main(config: omegaconf.DictConfig) -> None:
             if (config.num_batches_per_epoch is not None and
                     config.num_batches_per_epoch == step):
                 break
+                
+        print('Finish Train')
 
         return epoch_logs
 
     @torch.no_grad()
     def _eval_epoch(mode: str, save_base_path: Optional[str] = None) -> Dict[str, np.number]:
+        print('Running Eval')
         if mode == "val":
+            # print('Running validation')
             data_iterator.switch_to_val_data()
             unique_pairs_file = getattr(
                 config_data, "val_unique_pairs_file", None)
         else:
+            # print('Running test')
             data_iterator.switch_to_test_data()
             unique_pairs_file = getattr(
                 config_data, "test_unique_pairs_file", None)
@@ -387,7 +406,10 @@ def main(config: omegaconf.DictConfig) -> None:
                 list_of_references=refs,
                 hypotheses=hypos)
 
-        if config.reward_name in ["rouge", "bleurt", "sentiment", "gpt2-topic",
+        if config.reward_name in ["rouge", "bleurt", "sentiment", "gpt2-topic", "gpt2-bleu", 
+                                  "gpt2-bleu-sentiment", "gpt2-bleu-no-input", "gpt2-sentiment-no-input",
+                                  "gpt2-sentiment-bleu-no-input", "gpt2-sentiment-bertscore-no-input",
+                                  'gpt2-trigger',
                                   "entailment", "entailment2", "entailment3", "toxicity"]:
             if unique_pairs_file is not None:
                 colorful_warning("Only taking the first reference. "
@@ -404,22 +426,24 @@ def main(config: omegaconf.DictConfig) -> None:
             score = score.mean().item()
 
         # Scores for the GEM benchmark
-        gem_scores_dict = compute_GEM_metrics_from_outputs(
-            sources=srcs,
-            list_of_targets=refs,
-            predictions=hypos,
-            base_file_name_to_dump=save_base_path)
+#         gem_scores_dict = compute_GEM_metrics_from_outputs(
+#             sources=srcs,
+#             list_of_targets=refs,
+#             predictions=hypos,
+#             base_file_name_to_dump=save_base_path)
 
         add_prefix_to_dict_keys_inplace(
             score_log,
             prefix=f"{mode}/rewards/")
-        add_prefix_to_dict_keys_inplace(
-            gem_scores_dict,
-            prefix=f"{mode}/GEM/")
+#         add_prefix_to_dict_keys_inplace(
+#             gem_scores_dict,
+#             prefix=f"{mode}/GEM/")
+        
+        print('Finish Eval')
 
         return unionize_dicts([
             score_log,
-            gem_scores_dict,
+            # gem_scores_dict,
             {
                 f"{mode}/score": score,
                 f"{mode}/target_length": np.mean([
