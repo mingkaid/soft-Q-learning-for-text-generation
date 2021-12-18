@@ -114,6 +114,8 @@ def prepare_model(
         target_update_method=config.target_sync_method,
         target_learning_rate=config.target_learning_rate,
         reward_shaping=config.reward_shaping,
+        reward_old_min=config.reward_old_min,
+        reward_old_max=config.reward_old_max,
         reward_shaping_min=config.reward_shaping_min,
         reward_shaping_max=config.reward_shaping_max,
         sql_loss_coefficients=config.sql_loss_coefficients,
