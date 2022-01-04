@@ -1,0 +1,2 @@
+python evaluate.py --use_prompt=manual --sample_size=1 --pretrained_model=distilgpt2 --use_style_reward=open
+python evaluate.py --use_prompt=manual --sample_size=1 --pretrained_model=gpt2-large --use_style_reward=open

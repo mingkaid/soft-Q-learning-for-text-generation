@@ -1,0 +1,22 @@
+P2N
+ctc        91.449713
+sbert      56.786461
+bleu       30.445238
+our         0.719661
+open        0.673354
+reward     79.098489
+nll         3.905836
+time        1.145125
+fluency    49.691582
+dtype: float64
+N2P
+ctc        91.252006
+sbert      58.258111
+bleu       31.821251
+our         0.425568
+open        0.578878
+reward     74.163032
+nll         4.326218
+time        1.274879
+fluency    75.657571
+dtype: float64
