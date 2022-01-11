@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import sacrebleu as scb
 
-from transformers import pipeline, AutoTokenizer, GPT2LMHeadModel
+from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM, GPT2LMHeadModel
 from sentence_transformers import SentenceTransformer, util
 from ctc_score import StyleTransferScorer
 from tqdm import tqdm
@@ -28,34 +28,51 @@ def preprocess(text):
     text = re.sub('(.*?)( )*(\'\')', r"\1''", text)
     return text
 
-def postprocess_output(text): 
-    text = preprocess(text)
-    
-    try: 
-        end = text.index('"')
-    except ValueError: 
-        end = len(text)
+def postprocess_output(batch_ids_candidates, tokenizer):
+    batch_candidates = []
+    for batch_ids in batch_ids_candidates:
+        batch_tokens = []
+        for ids in batch_ids:
+            ids = ids.tolist()
+            eos = -1
+            
+            try:
+                eos = ids.index(tokenizer.eos_token_id)
+            except ValueError:
+                pass
+            
+            text = tokenizer.decode(ids[:eos], skip_special_tokens=True)
+            text = text.strip()
+            text = preprocess(text)
+            
+            eos = len(text) - 1
+            
+            try: 
+                eos = min(eos, text.index('.'))
+            except ValueError: 
+                pass
+
+            try: 
+                eos = min(eos, text.index('!'))
+            except ValueError: 
+                pass
+
+            try: 
+                eos = min(eos, text.index('?'))
+            except ValueError: 
+                pass
+            
+            
+            text = text[:eos+1]
+            # text = re.sub('([,!?()\'])', r' \1', text)
+            # text = re.sub('([a-z]){1}(\.){1}', r'\1 \2', text)
+            # text = re.sub('\s{2,}', ' ', text)
+            
+            batch_tokens.append(text)
+            
+        batch_candidates.append(batch_tokens)
         
-    text = text[:end]
-    text = text.strip()
-    
-    try: 
-        end = text.index('.')
-    except ValueError: 
-        end = len(text)
-        
-    try: 
-        end = min(end, text.index('!'))
-    except ValueError: 
-        end = end
-        
-    try: 
-        end = min(end, text.index('?'))
-    except ValueError: 
-        end = end
-        
-    text = text[:end+1].strip()    
-    return text
+    return batch_candidates
 
 def load_metrics(args):
     
@@ -121,19 +138,35 @@ def load_metrics(args):
         'F': perplexity,
     }
 
+def our_pipeline(texts, args, tokenizer, model, top_k=50, top_p=1.0, repetition_penalty=1.0, num_return_sequences=3):
+    tokens = tokenizer(texts,
+                       padding='longest',
+                       truncation=True,
+                       add_special_tokens=True,
+                       max_length=max_length,
+                       return_tensors='pt')
+    
+    
+    output_ids = model.generate(
+        input_ids=tokens['input_ids'], 
+        max_new_tokens=tokens['input_ids'].size(1) * args.max_new_ratio,
+        max_length=args.max_length,
+        num_return_sequences=args.sample_size,
+        do_sample=True,
+        num_beams=1,
+        num_beam_groups=1,
+        top_k=top_k,
+        top_p=top_p,
+        repetition_penalty=repetition_penalty,
+        return_full_text=False,
+    ).view(tokens['input_ids'].shape[0], args.sample_size, -1)[:, :, tokens['input_ids'].size(1)+1:]
+    output_texts_candidates = postprocess_output(output_ids)
+    return output_texts_candidates
 
 def load_model(args): 
-    if 'gpt2' in args.pretrained_model:
-        tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model, pad_token='<|endoftext|>')
-    else:
-        tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model)
-        
-    generator = pipeline(
-                "text-generation", 
-                tokenizer=tokenizer, 
-                model=args.pretrained_model, 
-                device=args.use_gpu)    
-        
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model)    
+    model = AutoModelForSeq2SeqLM.from_pretrained(args.pretrained_model)
+    generator = lambda texts: our_pipeline(texts, args, tokenizer, model)
     return generator
 
 
@@ -205,17 +238,9 @@ def generate(args, sentence, prompt, generator, metrics_fn, reward_fn, style='po
     prompt_sentence = prompt(sentence)
     
     start = time.time()
-    max_new_tokens = len(generator.tokenizer(sentence)['input_ids']) * args.max_new_ratio
-    
-    transfer_sentences = generator([prompt_sentence],
-                                    max_new_tokens=max_new_tokens,
-                                    pad_token_id=generator.tokenizer.pad_token_id,
-                                    num_return_sequences=args.sample_size,
-                                    max_length=args.max_length,
-                                    return_full_text=False)
+    transfer_sentences = generator([prompt_sentence])
     use_time = time.time() - start
     
-    transfer_sentences = [postprocess_output(s[0]["generated_text"]) for s in transfer_sentences]
     reference_sentences = [sentence for _ in transfer_sentences]
     
     results = {}
@@ -262,7 +287,6 @@ def main(args):
     
     output_path = os.path.join(currpath, 'outputs')
     os.makedirs(output_path, exist_ok=True)
-    model_name = args.pretrained_model.split('/')[-1]
     
     # P2N
     p2n_results = []
@@ -270,7 +294,7 @@ def main(args):
         output = generate(args, sentence, prompt['p2n'], generator, metrics_fn, reward_fn, style='neg')
         p2n_results.append(output)
         p2n_results_df = pd.DataFrame(p2n_results)
-        p2n_filename = f'{args.sample_size}-p2n-{args.use_prompt}-{model_name}-{args.use_style_reward}-{args.random_seed}.csv'
+        p2n_filename = f'{args.sample_size}-p2n-{args.use_prompt}-{args.pretrained_model}-{args.use_style_reward}-{args.random_seed}.csv'
         p2n_results_df.to_csv(os.path.join(output_path, p2n_filename), index=False)
     
     # N2P
@@ -279,11 +303,11 @@ def main(args):
         output = generate(args, sentence, prompt['n2p'], generator, metrics_fn, reward_fn, style='pos')
         n2p_results.append(output)
         n2p_results_df = pd.DataFrame(n2p_results)
-        n2p_filename = f'{args.sample_size}-n2p-{args.use_prompt}-{model_name}-{args.use_style_reward}-{args.random_seed}.csv'
+        n2p_filename = f'{args.sample_size}-n2p-{args.use_prompt}-{args.pretrained_model}-{args.use_style_reward}-{args.random_seed}.csv'
         n2p_results_df.to_csv(os.path.join(output_path, n2p_filename), index=False)
     
     
-    results_filename = f'{args.sample_size}-{args.use_prompt}-{model_name}-{args.use_style_reward}-{args.random_seed}.txt'
+    results_filename = f'{args.sample_size}-{args.use_prompt}-{args.pretrained_model}-{args.use_style_reward}-{args.random_seed}.txt'
     with open(os.path.join(output_path, results_filename),'w') as f:
         print('P2N', file=f)
         p2n_results_df_avg = p2n_results_df.mean()
@@ -298,7 +322,7 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     
-    parser.add_argument("--pretrained_model",   default='distilgpt2', type=str, required=False)
+    parser.add_argument("--pretrained_model",   default='T0pp/', type=str, required=False)
     parser.add_argument("--sample_size",        default=16,           type=int, required=False)
     parser.add_argument("--random_seed",        default=42,           type=int, required=False)
     parser.add_argument("--max_new_ratio",      default=4,            type=int, required=False)
