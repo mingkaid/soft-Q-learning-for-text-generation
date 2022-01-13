@@ -7,8 +7,8 @@ import sacrebleu as scb
 from collections import Counter
 from collections import defaultdict
 from joblib import Parallel, delayed
-from fairseq.data.data_utils import collate_tokens
-from fairseq.models.roberta import RobertaHubInterface
+# from fairseq.data.data_utils import collate_tokens
+# from fairseq.models.roberta import RobertaHubInterface
 from typing import List, Tuple, Union, Dict, Optional, Callable, Any, cast
 
 from datasets import load_metric
@@ -1416,8 +1416,12 @@ class GPT2SentimentNoInputReward(object):
             mode=mode)
     
 class GPT2SentimentBLEUNoInputReward(object):
-    TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix.txt"
-    # TST_TEMPLATES_FILE_NAME = "/workspace/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-no-source.txt"
+#     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix.txt"
+#     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task.txt"
+#     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix.txt"
+#     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-infix-no-prompt.txt"
+    TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix-no-prompt.txt"
+    END_PUNCT = '"'
     TST_CLF_CONFIG = dict(model=("/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/yelp_sentiment_classifier/"
                                     "results-bert-base/checkpoint-10410"),
                           tokenizer='bert-base-uncased')
@@ -1471,6 +1475,8 @@ class GPT2SentimentBLEUNoInputReward(object):
         self.temp_input_0 = "they are all really friendly and the vets are knowledgable and patient ."
         self.temp_input_1 = "thank you for a five star service ."
         self.temp_input_2 = "the mojitos are deliciously made with fresh fruit ."
+        self.temp_input_3 = "someone should buy this place and turn it into what it should be."
+        self.temp_input_4 = "we were ignored until i grabbed a table in the back."
         self.temp_input = self.temp_input_1
         self.sbert = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         self.sample_size = 16
@@ -1508,9 +1514,10 @@ class GPT2SentimentBLEUNoInputReward(object):
         return res
 
     def load_tst_templates(self) -> List[str]:
-        with open(self.TST_TEMPLATES_FILE_NAME) as f: 
-            tst_templates = [d.strip() for d in f.readlines()]
-        return tst_templates
+#         with open(self.TST_TEMPLATES_FILE_NAME) as f: 
+#             tst_templates = [d.strip() for d in f.readlines()]
+        temp_tst_template = 'Sentence 1: "{sentence_1}" {prompt} Sentence 2: "'
+        return [temp_tst_template]
     
     def _load_tst_inputs(self) -> Dict[Tuple[Any], List[str]]: 
         tst_inputs = {}
@@ -1538,6 +1545,7 @@ class GPT2SentimentBLEUNoInputReward(object):
         return tst_inputs
 
     def _convert_tokens_to_string(self, tokens: List[str]) -> List[str]: 
+        # return tokens
         return [self._generator.tokenizer
                 .convert_tokens_to_string(s.split())
                 for s in tokens]
@@ -1597,7 +1605,7 @@ class GPT2SentimentBLEUNoInputReward(object):
         recon_scr = self.sbert_sim(reference.lower(), [g.lower() for g in generated_text])
 
         reward_list = [(rs + sa) / 2 for rs, sa in zip(recon_scr, probs)]
-        sum_rewards = [(b + 1.05 * 100 * c) / (1 + 1) for b, c, p in zip(recon_scr, correct, probs)]
+        sum_rewards = [(b * 100 + 1.05 * 100 * c) / (1 + 1) for b, c, p in zip(recon_scr, correct, probs)]
         logs = [{
                 "ref_text": reference,
                 "gen_text": gt,
@@ -1606,6 +1614,31 @@ class GPT2SentimentBLEUNoInputReward(object):
                 "recon": rs, 
                 "clf_acc": sa} for rs, sa, gt in zip(recon_scr, probs, generated_text)]
         return sum_rewards, logs
+    
+    def postprocess_output(self, text, end_punct='"'): 
+        try: 
+            end = text.index(end_punct)
+        except ValueError: 
+            end = len(text)
+        text = text[:end].strip()
+        return text
+    
+        try: 
+            end = text.index('.')
+        except ValueError: 
+            end = len(text)
+
+        try: 
+            end = min(end, text.index('!'))
+        except ValueError: 
+            end = end
+
+        try: 
+            end = min(end, text.index('?'))
+        except ValueError: 
+            end = end
+
+        return text[:end+1].strip()
 
 
     def forward(self, target_labels: List[str], prompts: List[str], to_tensor: bool, mode: str) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
@@ -1624,10 +1657,10 @@ class GPT2SentimentBLEUNoInputReward(object):
         source_strings = self._get_inputs(mode, target_labels)
         prompt_strings = self._convert_tokens_to_string(prompts)
         formatted_prompts = self._format_prompts(source_strings, prompt_strings)
-        input_length = len(self._generator.tokenizer(source_strings[0])['input_ids'])
+        input_length = len(self._generator.tokenizer(source_strings[0])['input_ids']) * 2
 
         self._counter += 1
-        
+        print(input_length)
         generator_outputs: List[List[Dict[str, Any]]] = self._generator(
             formatted_prompts,
             # max_length=self._max_length,
@@ -1649,11 +1682,12 @@ class GPT2SentimentBLEUNoInputReward(object):
             generated_texts = []
             for output in generator_outputs[batch_index]: 
                 text = output["generated_text"]
-                try: 
-                    end = text.index('"')
-                except ValueError: 
-                    end = len(text)
-                generated_texts.append(text[:end])
+#                 try: 
+#                     end = text.index(self.END_PUNCT)
+#                 except ValueError: 
+#                     end = len(text)
+#                 generated_texts.append(text[:end])
+                generated_texts.append(self.postprocess_output(text, end_punct=self.END_PUNCT))
             
             if mode == "infer": 
                 print(f"Formatted Prompt: {formatted_prompts[batch_index]};",
@@ -1713,9 +1747,18 @@ class GPT2SentimentBLEUNoInputReward(object):
                     sum_rewards = [(b + 1.05 * 100 * c) / (1 + 1) for b, c, p in zip(recon_rewards, correct, probs)]
                     mean_sum_reward = torch.tensor(sum_rewards).float().mean()
                     max_sum_reward = torch.tensor(sum_rewards).float().max()
+                    
+                    prod_rewards = [(b * c) for b, c, p in zip(recon_rewards, correct, probs)]
+                    mean_prod_reward = torch.tensor(prod_rewards).float().mean()
+                    max_prod_reward = torch.tensor(prod_rewards).float().max()
+                    
                     #top_index = 0
                     top_index = sum_rewards.index(max_sum_reward)
-                    reward = mean_sum_reward
+                    # top_index = prod_rewards.index(max_prod_reward)
+                    reward = max_sum_reward
+                    
+                quantities_to_log["mean_prod_reward"].append(mean_prod_reward)
+                quantities_to_log["max_prod_reward"].append(max_prod_reward)
                 
                 quantities_to_log["sum_reward"].append(max_sum_reward)
                 mean_reward = torch.tensor(sum_rewards).float().mean()
@@ -2806,23 +2849,23 @@ def get_NLI_prediction(
     return predicted_probability
 
 
-@torch.no_grad()
-def get_NLI_prediction_2(
-        model: RobertaHubInterface,
-        premises: List[str],
-        hypotheses: List[str],
-) -> FloatTensor:
-    """https://github.com/pytorch/fairseq/tree/master/examples/roberta"""
-    batch = collate_tokens([
-        model.encode(premise, hypothesis)
-        for premise, hypothesis
-        in zip(premises, hypotheses)], pad_idx=1)
+# @torch.no_grad()
+# def get_NLI_prediction_2(
+#         model: RobertaHubInterface,
+#         premises: List[str],
+#         hypotheses: List[str],
+# ) -> FloatTensor:
+#     """https://github.com/pytorch/fairseq/tree/master/examples/roberta"""
+#     batch = collate_tokens([
+#         model.encode(premise, hypothesis)
+#         for premise, hypothesis
+#         in zip(premises, hypotheses)], pad_idx=1)
 
-    logits = model.predict(
-        "mnli", batch,
-        return_logits=True)
+#     logits = model.predict(
+#         "mnli", batch,
+#         return_logits=True)
 
-    return torch.nn.functional.softmax(logits, dim=-1)
+#     return torch.nn.functional.softmax(logits, dim=-1)
 
 
 def load_paraphrase_generator() -> Tuple[PegasusForConditionalGeneration, PegasusTokenizer]:

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import numpy as np
 import torch
 import torch.nn as nn
 import texar.torch as tx
@@ -27,6 +27,289 @@ from sql.types import (
     BatchType,
     FloatTensor,
     LongTensor)
+
+from transformers import pipeline, AutoTokenizer
+
+def _build_mlp(out_dim, in_dim=768, device=0): 
+#     W1 = nn.Linear(in_dim, 1024)
+#     A = nn.ReLU()
+#     W2 = nn.Linear(1024, 64)
+#     O = nn.Linear(64, out_dim)
+#     return nn.Sequential(W1, A, W2, O)
+    W1 = nn.Linear(in_dim, 1024)
+    A1 = nn.ReLU()
+    W2 = nn.Linear(1024, 512)
+    A2 = nn.ReLU()
+    W3 = nn.Linear(512, 256)
+    A3 = nn.ReLU()
+    W4 = nn.Linear(256, 64)
+    O = nn.Linear(64, out_dim)
+    return nn.Sequential(W1, A1, W2, A2, W3, A3, W4, O)
+
+
+def _top_k_logits(logits: torch.Tensor, k: int) -> torch.Tensor:
+    r"""Adapted from
+    https://github.com/openai/gpt-2/blob/master/src/sample.py#L63-L77
+    """
+    if k == 0:
+        # no truncation
+        return logits
+
+    values, _ = torch.topk(logits, k=k)
+    min_values: torch.Tensor = values[:, -1].unsqueeze(-1)
+    return torch.where(
+        logits < min_values,
+        torch.full_like(logits, float('-inf')), logits)
+
+def _top_p_logits(logits: torch.Tensor, p: float) -> torch.Tensor:
+    r"""Adapted from
+    https://gist.github.com/thomwolf/1a5a29f6962089e871b94cbd09daf317#file-top-k-top-p-py-L16-L27"""
+    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+
+    # Remove tokens with cumulative probability above the threshold
+    sorted_indices_to_remove = cumulative_probs > p
+    # Shift the indices to the right to keep also the first token above the
+    # threshold
+    sorted_indices_to_remove[:, 1:] = sorted_indices_to_remove[:, :-1].clone()
+    sorted_indices_to_remove[:, 0] = 0
+
+    for idx in range(logits.size(0)):
+        batch_indices = sorted_indices[idx, sorted_indices_to_remove[idx]]
+        logits[idx, batch_indices] = float("-inf")
+    return logits
+
+class GPT2ConditionedMLP(nn.Module): 
+    input_template = 'Sentence 1: "{sentence_1}"'
+    output_template = 'Sentence 2: "'
+    sentence_1 = 'thank you for a five star service .'
+    
+    def __init__(self, 
+                 train_data: tx.data.PairedTextData,
+                 max_source_length: int,
+                 max_decoding_length: int,
+                 config_name: str) -> None: 
+        super().__init__()
+        
+        if config_name not in ['gpt2_conditioned_mlp']: 
+            raise ValueError
+#         if config_name == 'gpt2_conditioned_mlp': 
+#             config_model = config_model_gpt2_conditioned_mlp
+            
+        # self.config_model = config_model
+        self.max_source_length = max_source_length
+        self.max_decoding_length = max_decoding_length
+        
+        self.source_vocab = train_data.source_vocab
+        self.target_vocab = train_data.target_vocab
+        self.source_vocab_size = train_data.source_vocab.size
+        self.target_vocab_size = train_data.target_vocab.size
+
+        self.bos_token_id = train_data.target_vocab.bos_token_id
+        self.eos_token_id = train_data.target_vocab.eos_token_id
+        
+        self.tokenizer = AutoTokenizer.from_pretrained('gpt2', pad_token='<|endoftext|>')
+        self.generator = pipeline("text-generation",
+                                  tokenizer=self.tokenizer,
+                                  model="gpt2",
+                                  device=0)
+        for param in self.generator.model.parameters():
+            param.requires_grad = False
+        
+        self.mlp = _build_mlp(self.target_vocab_size).to(0)
+#         self.mlp = nn.Linear(768, self.target_vocab_size).to(0)
+#         torch.nn.init.normal_(self.mlp.weight, std=0.01)
+#         torch.nn.init.normal_(self.mlp.bias, std=0.01)
+        
+    def decode_teacher_forcing(self,
+                               batch: BatchType,
+                               last_token_hidden_state,
+                               past_key_values) \
+    -> Tuple[tx.modules.TransformerDecoderOutput, LongTensor]:
+        
+        state = last_token_hidden_state
+        sample_ids, sample_logits = batch['target_text_ids'][:, 1:], []
+        #print(sample_ids)
+        for i in range(self.max_decoding_length): 
+            logits = self.mlp(state)
+            # actions = torch.distributions.categorical.Categorical(logits=logits).sample()
+            actions = sample_ids[:, i]
+            tokens = self.target_vocab.map_ids_to_tokens_py(actions.tolist()).tolist()
+            # sample_ids.append(actions.unsqueeze(dim=1))
+            sample_logits.append(logits.unsqueeze(dim=1))
+            
+            tokens = [' ' + t for t in tokens]
+            token_encoding = (self.generator
+                               .tokenizer(tokens, 
+                                          padding=True,
+                                          return_tensors='pt')
+                               .to(0))
+            input_ids = token_encoding['input_ids']
+            input_lengths = token_encoding['attention_mask'].sum(dim=1)
+
+            next_outputs = (self.generator.model
+                            .transformer(input_ids, 
+                                         past_key_values=past_key_values, 
+                                         use_cache=True))
+            state = next_outputs.last_hidden_state[np.arange(input_ids.shape[0]), 
+                                                   (input_lengths - 1)]
+            past_key_values = next_outputs.past_key_values
+            
+        # sample_ids = torch.cat(sample_ids, dim=1)
+        sample_logits = torch.cat(sample_logits, dim=1)
+            
+        decoder_output = tx.modules.TransformerDecoderOutput(
+            logits=sample_logits,
+            sample_id=sample_ids
+        )
+        return decoder_output, None
+    
+    def decode_sampling(self,
+                        batch: BatchType,
+                        last_token_hidden_state,
+                        past_key_values,
+                        top_k: Optional[int] = None,
+                        top_p: Optional[float] = None) \
+    -> Tuple[tx.modules.TransformerDecoderOutput, LongTensor]:
+        if top_k is not None and top_p is not None:
+            raise ValueError
+            
+        state = last_token_hidden_state
+        prompt_tokens, sample_ids, sample_logits = [], [], []
+        for i in range(self.max_decoding_length): 
+            logits = self.mlp(state)
+#             print(state.min().item(), state.max().item())
+            print(logits.min().item(), logits.max().item())
+            
+            if top_k is not None: sampling_logits = _top_k_logits(logits, k=top_k)
+            elif top_p is not None: sampling_logits = _top_p_logits(logits, p=top_p)
+            else: sampling_logits = logits
+            
+            actions = (torch.distributions.categorical
+                       .Categorical(logits=sampling_logits)
+                       .sample())
+            tokens = self.target_vocab.map_ids_to_tokens_py(actions.tolist()).tolist()
+            sample_ids.append(actions.unsqueeze(dim=1))
+            sample_logits.append(logits.unsqueeze(dim=1))
+            
+            tokens = [self.generator.tokenizer.convert_tokens_to_string([t]) \
+                      for t in tokens]
+            # print(tokens)
+            
+            token_encoding = (self.generator
+                               .tokenizer(tokens, 
+                                          padding=True,
+                                          return_tensors='pt')
+                               .to(0))
+            input_ids = token_encoding['input_ids']
+            input_lengths = token_encoding['attention_mask'].sum(dim=1)
+
+            next_outputs = (self.generator.model
+                            .transformer(input_ids, 
+                                         past_key_values=past_key_values, 
+                                         use_cache=True))
+            state = next_outputs.last_hidden_state[np.arange(input_ids.shape[0]), 
+                                                   (input_lengths - 1)]
+            past_key_values = next_outputs.past_key_values
+            
+        sample_ids = torch.cat(sample_ids, dim=1)
+        sample_logits = torch.cat(sample_logits, dim=1)
+        # print(sample_logits.min().item(), sample_logits.max().item())
+            
+        decoder_output = tx.modules.TransformerDecoderOutput(
+            logits=sample_logits,
+            sample_id=sample_ids
+        )
+        return (decoder_output, 
+                torch.tensor([self.max_decoding_length \
+                              for _ in range(sample_ids.shape[0])]).to(0)
+               )
+
+    def decode_greedy(
+            self,
+            batch: BatchType,
+            last_token_hidden_state,
+            past_key_values,
+            corruption_p: Optional[float] = None,
+            **kwargs
+    ) -> Dict[str, torch.Tensor]:
+
+        state = last_token_hidden_state
+        prompt_tokens, sample_ids, sample_logits = [], [], []
+        for i in range(self.max_decoding_length): 
+            logits = self.mlp(state) # [batch_size, vocab_size]
+            # actions = torch.distributions.categorical.Categorical(logits).sample() # [batch_size]
+            actions = logits.argmax(dim=-1) # [batch_size]
+            tokens = self.target_vocab.map_ids_to_tokens_py(actions.tolist()).tolist()
+            sample_ids.append(actions.unsqueeze(dim=1)) # [batch_size, 1]
+            sample_logits.append(logits.unsqueeze(dim=1)) # [batch_size, 1, vocab_size]
+            
+            tokens = [' ' + t for t in tokens]
+            input_ids = (self.generator
+                         .tokenizer(tokens, 
+                                    return_tensors='pt')
+                         ['input_ids']
+                         .to(0))
+            next_outputs = (self.generator.model
+                            .transformer(input_ids, 
+                                         past_key_values=past_key_values, 
+                                         use_cache=True))
+            state = next_outputs.last_hidden_state[:, -1, :]
+            past_key_values = next_outputs.past_key_values
+            
+        sample_ids = torch.cat(sample_ids, dim=1) # [batch_size, prompt_length]
+        sample_logits = torch.cat(sample_logits, dim=1) # [batch_size, prompt_length, vocab_size]
+            
+        decoder_output = tx.modules.TransformerDecoderOutput(
+            logits=sample_logits,
+            sample_id=sample_ids
+        )
+        return {
+                "sample_id": (
+                    decoder_output
+                    .sample_id
+                    .unsqueeze(dim=-1)
+                )
+            }
+    
+    def forward(self,
+                batch: BatchType,
+                mode: ForwardMode,
+                **kwargs) -> Union[Tuple[tx.modules.TransformerDecoderOutput, 
+                                         LongTensor], 
+                                   Dict]:        
+        formatted_input_template = self.input_template.format(sentence_1=self.sentence_1)
+        input_ids = (self.generator
+                     .tokenizer([self.sentence_1 \
+                                 for _ in range(len(batch['source_text']))], 
+                                return_tensors='pt')['input_ids']
+                     .to(0))
+        outputs = (self.generator.model
+                   .transformer(input_ids, use_cache=True))
+        last_token_hidden_state = outputs.last_hidden_state[:, -1, :]
+        past_key_values = outputs.past_key_values
+        
+        if mode in [ForwardMode.MLE, ForwardMode.SQL_OFF_GT]:
+            return self.decode_teacher_forcing(
+                batch=batch,
+                last_token_hidden_state=last_token_hidden_state,
+                past_key_values=past_key_values)
+
+        if mode in [ForwardMode.PG, ForwardMode.SQL_ON]:
+            return self.decode_sampling(
+                batch=batch,
+                last_token_hidden_state=last_token_hidden_state,
+                past_key_values=past_key_values,
+                **kwargs)
+
+        if mode in [ForwardMode.INFER]:
+            return self.decode_greedy(
+                batch=batch,
+                last_token_hidden_state=last_token_hidden_state,
+                past_key_values=past_key_values,
+                **kwargs)
+
+        raise ValueError(f"Unknown mode {mode}")
 
 
 class Transformer(nn.Module):
@@ -183,7 +466,7 @@ class Transformer(nn.Module):
                 end_token=self.eos_token_id,
                 p=top_p)
 
-        return self.decoder(
+        decoder_output = self.decoder(
             start_tokens=start_tokens,
             end_token=self.eos_token_id,
             helper=helper,
@@ -195,6 +478,10 @@ class Transformer(nn.Module):
             max_decoding_length=min(
                 self.max_decoding_length,
                 batch["target_length"].max().item() - 1))
+        
+        sample_logits = decoder_output[0].logits
+        print(sample_logits.min().item(), sample_logits.max().item())
+        return decoder_output
 
     def decode_beam_search(
             self,

@@ -11,8 +11,8 @@ from sql.types import (
     HF_BatchType,
     FloatTensor,
     LongTensor)
-from modules.models import Transformer
-TexarModules = Union[Transformer]
+from modules.models import Transformer, GPT2ConditionedMLP
+TexarModules = Union[Transformer, GPT2ConditionedMLP]
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
@@ -82,9 +82,9 @@ class TXSoftQModel(SoftQModelBase):
             beam_width=beam_width,
             reward_name=reward_name)
 
-        if not isinstance(self._model, Transformer):
+        if not (isinstance(self._model, Transformer) or isinstance(self._model, GPT2ConditionedMLP)):
             raise TypeError
-        if not isinstance(self._model_, Transformer):
+        if not (isinstance(self._model_, Transformer) or isinstance(self._model, GPT2ConditionedMLP)):
             raise TypeError
         if self._actor_model is not None and not isinstance(self._actor_model, Transformer):
             raise TypeError

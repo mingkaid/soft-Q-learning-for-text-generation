@@ -9,7 +9,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from enum import Enum
 from graphviz import Digraph
-from pytorch_lightning.metrics.functional.nlp import bleu_score
+from torchmetrics.functional import bleu_score
 
 from sql.types import FloatTensor, LongTensor, BatchType
 from typing import Union, Tuple, Dict, Any, Optional, Callable, List, cast

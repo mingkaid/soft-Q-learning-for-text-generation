@@ -26,9 +26,10 @@ from copy import deepcopy
 from itertools import chain
 from functools import partial
 from typing import Any, List, Tuple, Dict, Callable, Optional, cast
+import random
 
-from modules.models import Transformer
-from modules.metrics import compute_GEM_metrics_from_outputs
+from modules.models import Transformer, GPT2ConditionedMLP
+# from modules.metrics import compute_GEM_metrics_from_outputs
 from sql.types import BatchType
 from sql.utils import ForwardMode
 from sql.utils import colorful_warning
@@ -40,6 +41,13 @@ from sql.misc_utils import nested_detach_and_clone
 from configs.models import config_model_optimizer
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 PREPROCESS_TARGET_TEXTS = False
+
+def set_random_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 
 def _modify_model_config(config: omegaconf.DictConfig) -> None:
@@ -82,12 +90,18 @@ def prepare_model(
         max_decoding_length: int,
         use_behavior_model: bool = False,
 ) -> TXSoftQModel:
-    if config.architecture not in ["transformer_small"]:
+    
+    valid_models = ["transformer_small", "gpt2_conditioned_mlp"]
+    if config.architecture not in valid_models:
         raise ValueError
 
     if config.architecture in ["transformer_small"]:
         ModelClass: Callable = partial(
             Transformer,
+            config_name=config.architecture)
+    if config.architecture in ["gpt2_conditioned_mlp"]:
+        ModelClass: Callable = partial(
+            GPT2ConditionedMLP,
             config_name=config.architecture)
 
     behavior_model = None
@@ -175,6 +189,8 @@ def prepare_train_ops(
 def main(config: omegaconf.DictConfig) -> None:
     print(click.style(omegaconf.OmegaConf.to_yaml(config), fg="red"))
     # Looks like a hack
+    set_random_seed(config.random_seed)
+    # 2 worked somewhat
     wandb.init(project="soft-Q-learning", config=eval(str(config)))
     if not os.path.exists(config.save_dir):
         os.makedirs(config.save_dir)
@@ -294,6 +310,7 @@ def main(config: omegaconf.DictConfig) -> None:
             additional_info_list = []
             for mode in modes:
                 # print(batch)
+                print(mode)
                 _loss, _additional_info = model(
                     mode=mode,
                     batch=batch)
