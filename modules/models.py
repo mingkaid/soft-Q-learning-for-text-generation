@@ -36,15 +36,23 @@ def _build_mlp(out_dim, in_dim=768, device=0):
 #     W2 = nn.Linear(1024, 64)
 #     O = nn.Linear(64, out_dim)
 #     return nn.Sequential(W1, A, W2, O)
-    W1 = nn.Linear(in_dim, 1024)
+
+#     W1 = nn.Linear(in_dim, 1024)
+#     A1 = nn.ReLU()
+#     W2 = nn.Linear(1024, 512)
+#     A2 = nn.ReLU()
+#     W3 = nn.Linear(512, 256)
+#     A3 = nn.ReLU()
+#     W4 = nn.Linear(256, 64)
+#     O = nn.Linear(64, out_dim)
+    
+    W1 = nn.Linear(in_dim, 2048)
     A1 = nn.ReLU()
-    W2 = nn.Linear(1024, 512)
-    A2 = nn.ReLU()
-    W3 = nn.Linear(512, 256)
-    A3 = nn.ReLU()
-    W4 = nn.Linear(256, 64)
-    O = nn.Linear(64, out_dim)
-    return nn.Sequential(W1, A1, W2, A2, W3, A3, W4, O)
+    # D1 = nn.Dropout(p=0.1)
+    W2 = nn.Linear(2048, 768)
+    # O = nn.Linear(64, out_dim)
+    
+    return nn.Sequential(W1, A1, W2)
 
 
 def _top_k_logits(logits: torch.Tensor, k: int) -> torch.Tensor:
@@ -88,7 +96,8 @@ class GPT2ConditionedMLP(nn.Module):
                  train_data: tx.data.PairedTextData,
                  max_source_length: int,
                  max_decoding_length: int,
-                 config_name: str) -> None: 
+                 config_name: str,
+                 device=0) -> None: 
         super().__init__()
         
         if config_name not in ['gpt2_conditioned_mlp']: 
@@ -97,6 +106,7 @@ class GPT2ConditionedMLP(nn.Module):
 #             config_model = config_model_gpt2_conditioned_mlp
             
         # self.config_model = config_model
+        self.device = device
         self.max_source_length = max_source_length
         self.max_decoding_length = max_decoding_length
         
@@ -118,8 +128,24 @@ class GPT2ConditionedMLP(nn.Module):
         
         self.mlp = _build_mlp(self.target_vocab_size).to(0)
 #         self.mlp = nn.Linear(768, self.target_vocab_size).to(0)
+#         self.mlp = nn.Linear(768, 768).to(0)
+
+        def init_weights(m):
+            if isinstance(m, nn.Linear):
+                torch.nn.init.xavier_uniform_(m.weight, gain=0.01)
+                m.bias.data.fill_(0.0001)
+        self.mlp.apply(init_weights)
+    
 #         torch.nn.init.normal_(self.mlp.weight, std=0.01)
 #         torch.nn.init.normal_(self.mlp.bias, std=0.01)
+    
+    def _mlp_forward(self, state): 
+        mlp_output = self.mlp(state)
+        logits = self.generator.model.lm_head(mlp_output)
+        zeros = torch.zeros_like(logits)[:, :4]
+        modified_logits = torch.cat([zeros, logits], dim=-1)
+        # print(modified_logits.shape)
+        return modified_logits
         
     def decode_teacher_forcing(self,
                                batch: BatchType,
@@ -131,14 +157,20 @@ class GPT2ConditionedMLP(nn.Module):
         sample_ids, sample_logits = batch['target_text_ids'][:, 1:], []
         #print(sample_ids)
         for i in range(self.max_decoding_length): 
-            logits = self.mlp(state)
-            # actions = torch.distributions.categorical.Categorical(logits=logits).sample()
+            # logits = self.mlp(state)
+            logits = self._mlp_forward(state)
+            
             actions = sample_ids[:, i]
             tokens = self.target_vocab.map_ids_to_tokens_py(actions.tolist()).tolist()
+#             tokens = self.generator.tokenizer.convert_ids_to_tokens(actions.tolist())
+            # if i == 0: print(tokens)
+            
             # sample_ids.append(actions.unsqueeze(dim=1))
             sample_logits.append(logits.unsqueeze(dim=1))
             
-            tokens = [' ' + t for t in tokens]
+            tokens = [self.generator.tokenizer.convert_tokens_to_string([t]) \
+                      for t in tokens]
+            # tokens = [' ' + t for t in tokens]
             token_encoding = (self.generator
                                .tokenizer(tokens, 
                                           padding=True,
@@ -177,7 +209,8 @@ class GPT2ConditionedMLP(nn.Module):
         state = last_token_hidden_state
         prompt_tokens, sample_ids, sample_logits = [], [], []
         for i in range(self.max_decoding_length): 
-            logits = self.mlp(state)
+            # logits = self.mlp(state)
+            logits = self._mlp_forward(state)
 #             print(state.min().item(), state.max().item())
             print(logits.min().item(), logits.max().item())
             
@@ -189,6 +222,9 @@ class GPT2ConditionedMLP(nn.Module):
                        .Categorical(logits=sampling_logits)
                        .sample())
             tokens = self.target_vocab.map_ids_to_tokens_py(actions.tolist()).tolist()
+#             tokens = self.generator.tokenizer.convert_ids_to_tokens(actions.tolist())
+            # if i == 0: print(tokens)
+            
             sample_ids.append(actions.unsqueeze(dim=1))
             sample_logits.append(logits.unsqueeze(dim=1))
             
@@ -237,14 +273,20 @@ class GPT2ConditionedMLP(nn.Module):
         state = last_token_hidden_state
         prompt_tokens, sample_ids, sample_logits = [], [], []
         for i in range(self.max_decoding_length): 
-            logits = self.mlp(state) # [batch_size, vocab_size]
+            # logits = self.mlp(state) # [batch_size, vocab_size]
+            logits = self._mlp_forward(state)
+            
             # actions = torch.distributions.categorical.Categorical(logits).sample() # [batch_size]
             actions = logits.argmax(dim=-1) # [batch_size]
             tokens = self.target_vocab.map_ids_to_tokens_py(actions.tolist()).tolist()
+            # tokens = self.generator.tokenizer.convert_ids_to_tokens(actions.tolist())
+            
             sample_ids.append(actions.unsqueeze(dim=1)) # [batch_size, 1]
             sample_logits.append(logits.unsqueeze(dim=1)) # [batch_size, 1, vocab_size]
             
-            tokens = [' ' + t for t in tokens]
+            tokens = [self.generator.tokenizer.convert_tokens_to_string([t]) \
+                      for t in tokens]
+            # tokens = [' ' + t for t in tokens]
             input_ids = (self.generator
                          .tokenizer(tokens, 
                                     return_tensors='pt')

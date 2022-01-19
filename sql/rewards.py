@@ -934,7 +934,7 @@ class GPT2BLEUReward(object):
             mode=mode)
     
 class GPT2BLEUNoInputReward(object):
-    TST_TEMPLATES_FILE_NAME = "/workspace/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task.txt"
+    TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task.txt"
 
     def __init__(
             self,
@@ -980,10 +980,10 @@ class GPT2BLEUNoInputReward(object):
     def _load_tst_inputs(self) -> Dict[Tuple[str], List[str]]: 
         tst_inputs = {}
         # tokenizer = self._generator.tokenizer
-        filepath_train_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
-        filepath_train_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
-        filepath_dev_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
-        filepath_dev_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
+        filepath_train_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
+        filepath_train_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
+        filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
+        filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
         
         with open(filepath_train_0) as f: 
             sentences_train_0 = [line.strip() for line in f]
@@ -1035,7 +1035,9 @@ class GPT2BLEUNoInputReward(object):
         idx = self._tst_inputs_idx[mode]
         inputs = []
         for _ in range(batch_size): 
-            inputs.append(data[idx])
+            sentence = 'thank you for a five star service .'
+#             inputs.append(data[idx])
+            inputs.append(sentence)
             idx += 1
             idx %= len(data)
         self._tst_inputs_idx[mode] = idx
@@ -1416,11 +1418,11 @@ class GPT2SentimentNoInputReward(object):
             mode=mode)
     
 class GPT2SentimentBLEUNoInputReward(object):
-#     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix.txt"
+    TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix.txt"
 #     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task.txt"
 #     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix.txt"
 #     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-infix-no-prompt.txt"
-    TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix-no-prompt.txt"
+#     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix-no-prompt.txt"
     END_PUNCT = '"'
     TST_CLF_CONFIG = dict(model=("/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/yelp_sentiment_classifier/"
                                     "results-bert-base/checkpoint-10410"),
@@ -1708,15 +1710,17 @@ class GPT2SentimentBLEUNoInputReward(object):
                 # `sacrebleu` is ~3X faster than `lightning`
                 # `sacrebleu-parallel` is ~3X faster than `sacrebleu`
                 
-                # bleus = [
-                #     scb.sentence_bleu(
-                #         hypothesis=x,
-                #         references=[y])
-                #     for x, y in zip(
-                #         generated_texts,
-                #         reference_texts)
-                # ]
-                # bleu_rewards = [b.score for b in bleus]
+                bleus = [
+                    scb.sentence_bleu(
+                        hypothesis=x,
+                        references=[y])
+                    for x, y in zip(
+                        generated_texts,
+                        reference_texts)
+                ]
+                bleu_rewards = [b.score for b in bleus]
+                mean_bleu = torch.tensor(bleu_rewards).float().mean()
+                quantities_to_log['bleu'].append(mean_bleu)
 
                 ### The bleus here are temporarily sbert scores ###
                 sberts = self.sbert_sim(reference_texts[0].lower(), 
@@ -1755,6 +1759,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                     #top_index = 0
                     top_index = sum_rewards.index(max_sum_reward)
                     # top_index = prod_rewards.index(max_prod_reward)
+#                     reward = mean_bleu
                     reward = max_sum_reward
                     
                 quantities_to_log["mean_prod_reward"].append(mean_prod_reward)
