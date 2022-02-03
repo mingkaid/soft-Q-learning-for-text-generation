@@ -19,6 +19,7 @@ from transformers import (
     AutoTokenizer,
     AutoModelWithLMHead,
     AutoModelForSequenceClassification,
+    GPT2LMHeadModel,
     PreTrainedTokenizerBase,
     PegasusTokenizer,
     PegasusForConditionalGeneration,
@@ -2689,7 +2690,202 @@ class GPT2BLEUSentimentReward(object):
             to_tensor=to_tensor,
             mode=mode)
 
+class GPT2ClassifierReward(object):
 
+    def __init__(
+            self,
+            max_length: int = 30,
+            num_return_sequences_train: int = 128,
+            num_return_sequences_infer: int = 128,
+            include_perplexity: bool = False,
+            return_intermediate_outputs: bool = True,
+    ) -> None:
+
+        self.device = torch.device('cuda')
+        self._tokenizer = AutoTokenizer.from_pretrained('distilgpt2', pad_token='<|endoftext|>')
+        self._generator = GPT2LMHeadModel.from_pretrained('distilgpt2').to(self.device)
+        self._generator.config.pad_token_id = self._tokenizer.pad_token_id
+
+        self._max_length = max_length
+        self._tst_templates = self.load_tst_templates()
+        self._tst_inputs = self._load_tst_inputs()
+        self._tst_inputs_idx = {('train', 'LABEL_0'): 0, 
+                                ('train', 'LABEL_1'): 0,
+                                ('infer', 'LABEL_0'): 0,
+                                ('infer', 'LABEL_1'): 0}
+        
+        ### Modification starts ###
+        self._counter = 0
+    
+        self.train_input_pos = "this place was very good."
+        self.train_input_neg = "terrible service."
+        
+        self.pos_verbalizer_candidate = ['\u0120positive', '\u0120great'   ,'\u0120good', '\u0120wonderful', '\u0120delicious']
+        self.neg_verbalizer_candidate = ['\u0120negative', '\u0120terrible','\u0120bad' , '\u0120bad', '\u0120bad']
+        
+        self.pos_verbalizer = self.pos_verbalizer_candidate[3]
+        self.neg_verbalizer = self.neg_verbalizer_candidate[3]
+        self.pos_id = self._tokenizer.convert_tokens_to_ids(self.pos_verbalizer)
+        self.neg_id = self._tokenizer.convert_tokens_to_ids(self.neg_verbalizer)
+
+    def load_tst_templates(self) -> List[str]:
+        temp_tst_template = "{sentence_1} {prompt}"
+        # temp_tst_template = "{sentence_1} It was"
+        # temp_tst_template = "{sentence_1} All in all"
+        # temp_tst_template = "Review: {sentence_1} Is the review positive or negative?"
+        return [temp_tst_template]
+    
+    def _load_tst_inputs(self) -> Dict[Tuple[Any], List[str]]: 
+        tst_inputs = {}
+        filepath_train_0 = "/home/chengping/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
+        filepath_train_1 = "/home/chengping/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
+        filepath_dev_0 = "/home/chengping/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
+        filepath_dev_1 = "/home/chengping/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
+        
+        #filepath_train_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
+        #filepath_train_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
+        #filepath_dev_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
+        #filepath_dev_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
+        
+        with open(filepath_train_0) as f: 
+            sentences_train_0 = [line.strip() for line in f]
+        with open(filepath_train_1) as f: 
+            sentences_train_1 = [line.strip() for line in f]
+        with open(filepath_dev_0) as f: 
+            sentences_dev_0 = [line.strip() for line in f]
+        with open(filepath_dev_1) as f: 
+            sentences_dev_1 = [line.strip() for line in f]
+            
+        idx = 43
+        tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
+        tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:]
+        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[idx:(idx+5)]
+        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[idx:(idx+5)]
+        
+        return tst_inputs
+
+    def _convert_tokens_to_string(self, tokens: List[str]) -> List[str]: 
+        return [self._tokenizer.convert_tokens_to_string(s.split())
+                for s in tokens]
+
+    def _format_prompts(self, source_strings: List[str], prompt_strings: List[str]) -> List[str]:
+        template = self._tst_templates[0]
+        return [
+            template.format(sentence_1=s, prompt=p) for s_1, p
+            in zip(source_strings, prompt_strings) for s in s_1
+        ]
+
+    
+    def _get_inputs(self, mode: str, target_labels: List[str]): 
+    
+        inputs = []
+        for i, label in enumerate(target_labels): 
+            idx = self._tst_inputs_idx[(mode, label)]
+            p_data = self._tst_inputs[(mode, 'LABEL_0')]
+            n_data = self._tst_inputs[(mode, 'LABEL_1')]
+
+            if mode == 'train':
+                inputs.append([self.train_input_pos, self.train_input_neg])
+            elif mode == 'infer':
+                inputs.append([p_data[i], n_data[i]])
+                
+            idx += 1
+            idx %= len(p_data)
+            self._tst_inputs_idx[(mode, label)] = idx
+        
+        return inputs
+    
+    def _get_probs(self, text):
+        input_ids = self._tokenizer([text], padding=False, truncation=True, return_tensors="pt", add_special_tokens=True).input_ids
+        logits = self._generator.generate(input_ids.to(self.device), 
+            max_new_tokens=1,
+            max_length=128,
+            num_return_sequences=1,
+            temperature=1.0,
+            output_scores=True,
+            return_dict_in_generate=True)
+        logits = torch.stack(list(logits['scores']), dim=0).transpose(1, 0)
+        probs = torch.softmax(logits, dim=-1)[0, 0]
+        
+        return probs
+    
+    def forward(self, target_labels: List[str], prompts: List[str], to_tensor: bool, mode: str) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
+        if mode not in ["train", "infer"]:
+            raise ValueError
+            
+        source_strings = self._get_inputs(mode, target_labels)
+        prompt_strings = self._convert_tokens_to_string(prompts)
+        formatted_prompts = self._format_prompts(source_strings, prompt_strings)
+        # len(prompts) == 6
+        # len(formatted_prompts) == 12 (pos + neg)
+        
+        rewards = []
+        quantities_to_log: Dict[str, List[FloatTensor]] = defaultdict(list)
+            
+        for batch_index in range(len(prompts)):
+   
+            pos_prompt = formatted_prompts[batch_index * 2    ]
+            neg_prompt = formatted_prompts[batch_index * 2 + 1]
+        
+            pos_probs = self._get_probs(pos_prompt)
+            neg_probs = self._get_probs(neg_prompt)
+            
+            pos_pos_prob, pos_neg_prob = pos_probs[self.pos_id], pos_probs[self.neg_id]
+            neg_pos_prob, neg_neg_prob = neg_probs[self.pos_id], neg_probs[self.neg_id]
+            
+            # UnBounded
+            # pos_reward = ((pos_pos_prob - pos_neg_prob) / (pos_neg_prob))
+            # neg_reward = ((neg_neg_prob - neg_pos_prob) / (neg_pos_prob))
+            
+            # Bounded
+            pos_reward = ((pos_pos_prob - pos_neg_prob) / (pos_neg_prob + pos_pos_prob))
+            neg_reward = ((neg_neg_prob - neg_pos_prob) / (neg_pos_prob + neg_neg_prob))
+            
+            reward = (pos_reward + neg_reward) / 2 * 100
+            
+            quantities_to_log["pp"].append(pos_pos_prob.item())
+            quantities_to_log["pn"].append(pos_neg_prob.item())
+            quantities_to_log["nn"].append(neg_neg_prob.item())
+            quantities_to_log["np"].append(neg_pos_prob.item())
+            quantities_to_log["reward"].append(reward.item())
+            
+            self._counter += 1
+        
+            print(prompts[batch_index], '\n', 
+                  formatted_prompts[batch_index * 2], '\n', 
+                  formatted_prompts[batch_index * 2 + 1], '\n', 
+                  'PP:', pos_pos_prob.item(), '|',
+                  'PN:', pos_neg_prob.item(), '|',
+                  'NN:', neg_neg_prob.item(), '|',
+                  'NP:', neg_pos_prob.item(), '|',
+                  'Reward:', round(reward.item(), 2))
+            
+            rewards.append(reward)
+            
+        rewards_tensor = torch.stack(rewards)
+        
+        rewards_log = dict(
+            (reward_key, torch.mean(torch.tensor(reward_vals)))
+            for reward_key, reward_vals in quantities_to_log.items())
+        
+        if to_tensor is True:
+            return rewards_tensor, rewards_log
+        else:
+            return rewards_tensor.tolist(), rewards_log
+
+    def __call__(
+        self,
+        sources: List[str],
+        targets: List[str],
+        predictions: List[str],
+        to_tensor: bool,
+        mode: str,
+    ) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
+        return self.forward(
+            target_labels=sources,
+            prompts=predictions,
+            to_tensor=to_tensor,
+            mode=mode)
 
 class PrefixSentimentClassifier(object):
     def __init__(self) -> None:
@@ -2775,7 +2971,8 @@ reward_name_to_cls_map = {
     "gpt2-sentiment-bleu-no-input": GPT2SentimentBLEUNoInputReward,
     "gpt2-sentiment-bertscore-no-input": GPT2SentimentBERTScoreNoInputReward,
     'gpt2-trigger': GPT2TriggerReward,
-    "gpt2-bleu-sentiment": GPT2BLEUSentimentReward
+    "gpt2-bleu-sentiment": GPT2BLEUSentimentReward,
+    'gpt2-classifier': GPT2ClassifierReward,
 }
 
 

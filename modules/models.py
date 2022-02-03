@@ -90,7 +90,8 @@ def _top_p_logits(logits: torch.Tensor, p: float) -> torch.Tensor:
 class GPT2ConditionedMLP(nn.Module): 
     input_template = 'Sentence 1: "{sentence_1}"'
     output_template = 'Sentence 2: "'
-    sentence_1 = 'thank you for a five star service .'
+    # sentence_1 = 'thank you for a five star service .'
+    sentence_1 = 'classification'
     
     def __init__(self, 
                  train_data: tx.data.PairedTextData,
