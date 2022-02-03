@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import numpy as np
+import json
 import torch
 import torch.nn as nn
 import texar.torch as tx
@@ -30,7 +31,7 @@ from sql.types import (
 
 from transformers import pipeline, AutoTokenizer
 
-def _build_mlp(out_dim, in_dim=768, device=0): 
+def _build_gpt2_vocab_mlp(out_dim, in_dim=768, device=0): 
 #     W1 = nn.Linear(in_dim, 1024)
 #     A = nn.ReLU()
 #     W2 = nn.Linear(1024, 64)
@@ -54,6 +55,12 @@ def _build_mlp(out_dim, in_dim=768, device=0):
     
     return nn.Sequential(W1, A1, W2)
 
+def _build_self_vocab_mlp(out_dim, in_dim=768, device=0): 
+    W1 = nn.Linear(in_dim, 64)
+    A1 = nn.ReLU()
+    O = nn.Linear(64, out_dim)
+    return nn.Sequential(W1, A1, O)
+
 
 def _top_k_logits(logits: torch.Tensor, k: int) -> torch.Tensor:
     r"""Adapted from
@@ -73,7 +80,7 @@ def _top_p_logits(logits: torch.Tensor, p: float) -> torch.Tensor:
     r"""Adapted from
     https://gist.github.com/thomwolf/1a5a29f6962089e871b94cbd09daf317#file-top-k-top-p-py-L16-L27"""
     sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-    cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+    cumulative_probs = torch.cumsum(nn.functional.softmax(sorted_logits, dim=-1), dim=-1)
 
     # Remove tokens with cumulative probability above the threshold
     sorted_indices_to_remove = cumulative_probs > p
@@ -91,6 +98,11 @@ class GPT2ConditionedMLP(nn.Module):
     input_template = 'Sentence 1: "{sentence_1}"'
     output_template = 'Sentence 2: "'
     sentence_1 = 'thank you for a five star service .'
+    sentence_2 = "thank you for the meal ."
+    temp_input_2 = "the mojitos are deliciously made with fresh fruit ."
+    temp_input_0 = "they are all really friendly and the vets are knowledgable and patient ."
+    temp_input_3 = "someone should buy this place and turn it into what it should be."
+    temp_input_6 = "manager actually has respect for the customer instead of ignoring them ."
     
     def __init__(self, 
                  train_data: tx.data.PairedTextData,
@@ -126,9 +138,23 @@ class GPT2ConditionedMLP(nn.Module):
         for param in self.generator.model.parameters():
             param.requires_grad = False
         
-        self.mlp = _build_mlp(self.target_vocab_size).to(0)
-#         self.mlp = nn.Linear(768, self.target_vocab_size).to(0)
-#         self.mlp = nn.Linear(768, 768).to(0)
+        mode = 'gpt2_vocab'
+        if mode == 'gpt2_vocab': 
+            self.mlp = _build_gpt2_vocab_mlp(self.target_vocab_size).to(0)
+            self._mlp_forward = self._gpt2_vocab_mlp_forward
+            self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
+                                                  'experiments/valid_gpt2_token_ids.yelp_negative_prep'))
+            # self.valid_token_ids = None
+        elif mode == 'self_vocab': 
+            self.mlp = _build_self_vocab_mlp(self.target_vocab_size).to(0)
+            self._mlp_forward = self.mlp
+
+        self.temp_input = self.sentence_1
+#         self.temp_input = self.sentence_2
+#         self.temp_input = self.temp_input_2
+#         self.temp_input = self.temp_input_0
+        self.temp_input = self.temp_input_6
+        
 
         def init_weights(m):
             if isinstance(m, nn.Linear):
@@ -136,13 +162,15 @@ class GPT2ConditionedMLP(nn.Module):
                 m.bias.data.fill_(0.0001)
         self.mlp.apply(init_weights)
     
-#         torch.nn.init.normal_(self.mlp.weight, std=0.01)
-#         torch.nn.init.normal_(self.mlp.bias, std=0.01)
     
-    def _mlp_forward(self, state): 
+    def _gpt2_vocab_mlp_forward(self, state): 
         mlp_output = self.mlp(state)
         logits = self.generator.model.lm_head(mlp_output)
-        zeros = torch.zeros_like(logits)[:, :4]
+        if self.valid_token_ids is not None: 
+            logits = logits[:, self.valid_token_ids]
+        # print(logits.shape)
+        zeros = torch.ones_like(logits)[:, :4] * float('-inf')
+        # print(zeros)
         modified_logits = torch.cat([zeros, logits], dim=-1)
         # print(modified_logits.shape)
         return modified_logits
@@ -322,7 +350,7 @@ class GPT2ConditionedMLP(nn.Module):
                                    Dict]:        
         formatted_input_template = self.input_template.format(sentence_1=self.sentence_1)
         input_ids = (self.generator
-                     .tokenizer([self.sentence_1 \
+                     .tokenizer([self.temp_input \
                                  for _ in range(len(batch['source_text']))], 
                                 return_tensors='pt')['input_ids']
                      .to(0))
