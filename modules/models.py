@@ -104,6 +104,8 @@ class GPT2ConditionedMLP(nn.Module):
     temp_input_3 = "someone should buy this place and turn it into what it should be."
     temp_input_6 = "manager actually has respect for the customer instead of ignoring them ."
     
+    # sentence_1 = 'thank you for a five star service .'
+    # sentence_1 = 'classification'
     def __init__(self, 
                  train_data: tx.data.PairedTextData,
                  max_source_length: int,
@@ -153,7 +155,7 @@ class GPT2ConditionedMLP(nn.Module):
 #         self.temp_input = self.sentence_2
 #         self.temp_input = self.temp_input_2
 #         self.temp_input = self.temp_input_0
-        self.temp_input = self.temp_input_6
+        # self.temp_input = self.temp_input_6
         
 
         def init_weights(m):
