@@ -2763,11 +2763,6 @@ class GPT2ClassifierReward(object):
         filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
         filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
         
-#         filepath_train_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
-#         filepath_train_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
-#         filepath_dev_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
-#         filepath_dev_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
-        
         with open(filepath_train_0) as f: 
             sentences_train_0 = [line.strip() for line in f]
         with open(filepath_train_1) as f: 
@@ -2817,18 +2812,16 @@ class GPT2ClassifierReward(object):
         
         return inputs
     
-    def _get_probs(self, text):
-        input_ids = self._tokenizer([text], padding=False, truncation=True, return_tensors="pt", add_special_tokens=True).input_ids
-        logits = self._generator.generate(input_ids.to(self.device), 
-            max_new_tokens=1,
-            max_length=128,
-            num_return_sequences=1,
-            temperature=1.0,
-            output_scores=True,
-            return_dict_in_generate=True)
-        logits = torch.stack(list(logits['scores']), dim=0).transpose(1, 0)
-        probs = torch.softmax(logits, dim=-1)[0, 0]
+    def _get_probs(self, texts):
+        input_ids  = self._tokenizer(texts, padding='longest', truncation=True, return_tensors="pt", add_special_tokens=True).input_ids
+        batch_size = len(texts)
+        seq_len    = torch.ne(input_ids, self._tokenizer.pad_token_id).sum(-1) - 1
         
+        with torch.no_grad():
+            logits = self._generator(input_ids=input_ids.to(device)).logits
+            logits = logits[range(batch_size), seq_len] 
+            
+        probs  = torch.softmax(logits, -1)
         return probs
     
     def forward(self, target_labels: List[str], prompts: List[str], to_tensor: bool, mode: str) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
@@ -2838,6 +2831,7 @@ class GPT2ClassifierReward(object):
         source_strings = self._get_inputs(mode, target_labels)
         prompt_strings = self._convert_tokens_to_string(prompts)
         formatted_prompts = self._format_prompts(source_strings, prompt_strings)
+        probs = self._get_probs(formatted_prompts)
         # len(prompts) == 6
         # len(formatted_prompts) == 12 (pos + neg)
         
@@ -2846,11 +2840,8 @@ class GPT2ClassifierReward(object):
             
         for batch_index in range(len(prompts)):
    
-            pos_prompt = formatted_prompts[batch_index * 2    ]
-            neg_prompt = formatted_prompts[batch_index * 2 + 1]
-        
-            pos_probs = self._get_probs(pos_prompt)
-            neg_probs = self._get_probs(neg_prompt)
+            pos_probs = probs[batch_index * 2    ]
+            neg_probs = probs[batch_index * 2 + 1]
             
             pos_pos_prob, pos_neg_prob = pos_probs[self.pos_id], pos_probs[self.neg_id]
             neg_pos_prob, neg_neg_prob = neg_probs[self.pos_id], neg_probs[self.neg_id]
