@@ -416,7 +416,7 @@ def main(config: omegaconf.DictConfig) -> None:
         if config.reward_name in ["rouge", "bleurt", "sentiment", "gpt2-topic", "gpt2-bleu", 
                                   "gpt2-bleu-sentiment", "gpt2-bleu-no-input", "gpt2-sentiment-no-input",
                                   "gpt2-sentiment-bleu-no-input", "gpt2-sentiment-bertscore-no-input",
-                                  'gpt2-trigger','gpt2-classifier'
+                                  'gpt2-trigger','gpt2-classifier',
                                   "entailment", "entailment2", "entailment3", "toxicity"]:
             if unique_pairs_file is not None:
                 colorful_warning("Only taking the first reference. "

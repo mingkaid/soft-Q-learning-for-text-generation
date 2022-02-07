@@ -2757,10 +2757,10 @@ class GPT2ClassifierReward(object):
     
     def _load_tst_inputs(self) -> Dict[Tuple[Any], List[str]]: 
         tst_inputs = {}
-        filepath_train_0 = "/home/chengping/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
-        filepath_train_1 = "/home/chengping/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
-        filepath_dev_0 = "/home/chengping/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
-        filepath_dev_1 = "/home/chengping/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
+        filepath_train_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
+        filepath_train_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
+        filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
+        filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
         
         #filepath_train_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
         #filepath_train_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
@@ -2779,8 +2779,8 @@ class GPT2ClassifierReward(object):
         idx = 43
         tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
         tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:]
-        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[idx:(idx+5)]
-        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[idx:(idx+5)]
+        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[idx:(idx+10)]
+        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[idx:(idx+10)]
         
         return tst_inputs
 
@@ -2808,6 +2808,7 @@ class GPT2ClassifierReward(object):
                 inputs.append([self.train_input_pos, self.train_input_neg])
             elif mode == 'infer':
                 inputs.append([p_data[i], n_data[i]])
+                # inputs.append([self.train_input_pos, self.train_input_neg])
                 
             idx += 1
             idx %= len(p_data)

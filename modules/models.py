@@ -105,7 +105,7 @@ class GPT2ConditionedMLP(nn.Module):
     temp_input_6 = "manager actually has respect for the customer instead of ignoring them ."
     
     # sentence_1 = 'thank you for a five star service .'
-    # sentence_1 = 'classification'
+    sentence_1 = 'classification'
     def __init__(self, 
                  train_data: tx.data.PairedTextData,
                  max_source_length: int,
@@ -146,7 +146,7 @@ class GPT2ConditionedMLP(nn.Module):
             self._mlp_forward = self._gpt2_vocab_mlp_forward
             self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
                                                   'experiments/valid_gpt2_token_ids.yelp_negative_prep'))
-            # self.valid_token_ids = None
+            self.valid_token_ids = None
         elif mode == 'self_vocab': 
             self.mlp = _build_self_vocab_mlp(self.target_vocab_size).to(0)
             self._mlp_forward = self.mlp
