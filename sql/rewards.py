@@ -2757,15 +2757,16 @@ class GPT2ClassifierReward(object):
     
     def _load_tst_inputs(self) -> Dict[Tuple[Any], List[str]]: 
         tst_inputs = {}
+        
         filepath_train_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
         filepath_train_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
         filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
         filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
         
-        #filepath_train_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
-        #filepath_train_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
-        #filepath_dev_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
-        #filepath_dev_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
+#         filepath_train_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
+#         filepath_train_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
+#         filepath_dev_0 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
+#         filepath_dev_1 = "/workspace/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
         
         with open(filepath_train_0) as f: 
             sentences_train_0 = [line.strip() for line in f]
