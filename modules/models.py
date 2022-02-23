@@ -144,7 +144,7 @@ class GPT2ConditionedMLP(nn.Module):
         if mode == 'gpt2_vocab': 
             self.mlp = _build_gpt2_vocab_mlp(self.target_vocab_size).to(0)
             self._mlp_forward = self._gpt2_vocab_mlp_forward
-            self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
+            self.valid_token_ids = json.load(open('/home/c2hsieh/soft-Q-learning-for-text-generation/'
                                                   'experiments/valid_gpt2_token_ids.yelp_negative_prep'))
             self.valid_token_ids = None
         elif mode == 'self_vocab': 
@@ -242,7 +242,7 @@ class GPT2ConditionedMLP(nn.Module):
             # logits = self.mlp(state)
             logits = self._mlp_forward(state)
 #             print(state.min().item(), state.max().item())
-            print(logits.min().item(), logits.max().item())
+#             print(logits.min().item(), logits.max().item())
             
             if top_k is not None: sampling_logits = _top_k_logits(logits, k=top_k)
             elif top_p is not None: sampling_logits = _top_p_logits(logits, p=top_p)

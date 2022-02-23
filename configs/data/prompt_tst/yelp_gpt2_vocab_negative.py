@@ -1,7 +1,7 @@
 import os
 
 
-base_path = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-words"
+base_path = "/home/c2hsieh/soft-Q-learning-for-text-generation/data/yelp-gpt2-words"
 max_source_length = 512
 max_decoding_length = 5
 
@@ -24,7 +24,7 @@ train = {
 
 # No Validation and Test
 val = {
-    "batch_size": 10,
+    "batch_size": 32,
     "shuffle": False,
     "source_dataset": {
         "files": os.path.join(base_path, "dev.source.negative"),
@@ -38,7 +38,7 @@ val = {
 
 # No Validation and Test
 test = {
-    "batch_size": 10,
+    "batch_size": 32,
     "shuffle": False,
     "source_dataset": {
         "files": os.path.join(base_path, "dev.source.negative"),

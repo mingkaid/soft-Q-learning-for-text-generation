@@ -201,6 +201,7 @@ def main(config: omegaconf.DictConfig) -> None:
     config_data: Any = importlib.import_module(
         f"configs.data.{config.task_name}")
     # Prepare data, model, and ops
+    
     train_data, val_data, test_data, data_iterator = prepare_data(
         config_data=config_data)
     model = prepare_model(
@@ -310,7 +311,7 @@ def main(config: omegaconf.DictConfig) -> None:
             additional_info_list = []
             for mode in modes:
                 # print(batch)
-                print(mode)
+#                 print(mode)
                 _loss, _additional_info = model(
                     mode=mode,
                     batch=batch)
@@ -406,7 +407,7 @@ def main(config: omegaconf.DictConfig) -> None:
                 srcs.append(src)
                 refs.append(ref)
                 hypos.append(hypo)
-
+        
         if config.reward_name in ["bleu", "bleu+bleurt"]:
             score_log = {}
             score = tx.evals.corpus_bleu_moses(

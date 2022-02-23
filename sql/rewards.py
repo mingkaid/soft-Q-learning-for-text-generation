@@ -2742,6 +2742,9 @@ class GPT2ClassifierReward(object):
         
         self.pos_verbalizer_candidate = ['\u0120positive', '\u0120great'   ,'\u0120good', '\u0120wonderful', '\u0120delicious']
         self.neg_verbalizer_candidate = ['\u0120negative', '\u0120terrible','\u0120bad' , '\u0120bad', '\u0120bad']
+        self.neutral_sentence = ["N/A", "", "[MASK]"]
+        # pos: tensor(0.1904)
+        # neg: tensor(0.8096)
         
         self.pos_verbalizer = self.pos_verbalizer_candidate[3]
         self.neg_verbalizer = self.neg_verbalizer_candidate[3]
@@ -2750,18 +2753,25 @@ class GPT2ClassifierReward(object):
 
     def load_tst_templates(self) -> List[str]:
         temp_tst_template = "{sentence_1} {prompt}"
+        temp_tst_manual_template = "{sentence_1} It was"
+        temp_tst_null_template = "{sentence_1}"
+        
         # temp_tst_template = "{sentence_1} It was"
         # temp_tst_template = "{sentence_1} All in all"
         # temp_tst_template = "Review: {sentence_1} Is the review positive or negative?"
-        return [temp_tst_template]
+        return {
+            'learned': temp_tst_template,
+            'manual' : temp_tst_manual_template,
+            'null'   : temp_tst_null_template
+        }
     
     def _load_tst_inputs(self) -> Dict[Tuple[Any], List[str]]: 
         tst_inputs = {}
         
-        filepath_train_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
-        filepath_train_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
-        filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
-        filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
+        filepath_train_0 = "/home/c2hsieh/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
+        filepath_train_1 = "/home/c2hsieh/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
+        filepath_dev_0 = "/home/c2hsieh/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
+        filepath_dev_1 = "/home/c2hsieh/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
         
         with open(filepath_train_0) as f: 
             sentences_train_0 = [line.strip() for line in f]
@@ -2775,24 +2785,51 @@ class GPT2ClassifierReward(object):
         idx = 43
         tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
         tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:]
-        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[idx:(idx+10)]
-        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[idx:(idx+10)]
+        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[idx:(idx+32)]
+        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[idx:(idx+32)]
         
         return tst_inputs
-
+    
+    
     def _convert_tokens_to_string(self, tokens: List[str]) -> List[str]: 
         return [self._tokenizer.convert_tokens_to_string(s.split())
                 for s in tokens]
 
-    def _format_prompts(self, source_strings: List[str], prompt_strings: List[str]) -> List[str]:
-        template = self._tst_templates[0]
+    def _format_prompts(self, source_strings: List[str], prompt_strings: List[str], prompt_type='learned') -> List[str]:
+        template = self._tst_templates[prompt_type]
         return [
-            template.format(sentence_1=s, prompt=p) for s_1, p
-            in zip(source_strings, prompt_strings) for s in s_1
+            template.format(sentence_1=s, prompt=p) for p in (prompt_strings) for s in self.neutral_sentence
+        ], [
+            template.format(sentence_1=s, prompt=p) for s_1, p in zip(source_strings, prompt_strings) for s in s_1
         ]
+    
 
     
     def _get_inputs(self, mode: str, target_labels: List[str]): 
+            
+#         if mode == 'train':
+#             return [
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["this place was very good.", "terrible service."],
+#                 ["i'm glad i found this place!",  "the worst dental office i ever been."],
+#                 ["i'm glad i found this place!",  "the worst dental office i ever been."],
+#                 ["i'm glad i found this place!",  "the worst dental office i ever been."],
+#                 ["i'm glad i found this place!",  "the worst dental office i ever been."],
+#                 ["if you go to pittsburgh it is a must eat.", "this place went from great to horrible."],
+#                 ["if you go to pittsburgh it is a must eat.", "this place went from great to horrible."],
+#                 ["if you go to pittsburgh it is a must eat.", "this place went from great to horrible."],
+#                 ["if you go to pittsburgh it is a must eat.", "this place went from great to horrible."]
+#             ]
     
         inputs = []
         for i, label in enumerate(target_labels): 
@@ -2801,13 +2838,13 @@ class GPT2ClassifierReward(object):
             n_data = self._tst_inputs[(mode, 'LABEL_1')]
 
             if mode == 'train':
-                inputs.append([self.train_input_pos, self.train_input_neg])
+                # inputs.append([self.train_input_pos, self.train_input_neg])
+                inputs.append([p_data[idx], n_data[idx]])
             elif mode == 'infer':
                 inputs.append([p_data[i], n_data[i]])
-                # inputs.append([self.train_input_pos, self.train_input_neg])
                 
             idx += 1
-            idx %= len(p_data)
+            idx %= min(len(p_data), len(n_data))
             self._tst_inputs_idx[(mode, label)] = idx
         
         return inputs
@@ -2824,59 +2861,142 @@ class GPT2ClassifierReward(object):
         probs  = torch.softmax(logits, -1)
         return probs
     
+    def _get_calibrate_params(self, texts, mode="diagonal_W", num_classes=2):
+        probs = self._get_probs(texts).cpu()
+        label_probs = torch.stack([probs[:, self.pos_id], probs[:, self.neg_id]]).reshape(2, -1, len(self.neutral_sentence))
+        label_probs = torch.mean(label_probs, dim=-1).T
+        label_probs = label_probs / label_probs.sum(dim=1, keepdim=True)
+        
+        # Batch, num_classes
+        # Batch, num_classes, num_classes
+        
+        if mode == "diagonal_W":
+            W = torch.linalg.inv(torch.eye(num_classes).unsqueeze(0).repeat(len(label_probs), 1, 1) * label_probs.unsqueeze(-1))
+            B = torch.zeros([len(label_probs), num_classes, 1])
+        elif mode == "identity_W":
+            W = torch.eye(num_classes).unsqueeze(0).repeat(len(label_probs), 1, 1)
+            B = -1 * label_probs.unsqueeze(-1)
+
+        return [(w,b) for w, b in zip(W,B)]
+    
+    def _get_label_probs(self, probs, calibrate_params):
+        label_probs = torch.stack([probs[self.pos_id].cpu(), probs[self.neg_id].cpu()])
+        label_probs = label_probs / torch.sum(label_probs)
+        calibrate_label_probs = calibrate_params[0] @ label_probs.unsqueeze(-1) + calibrate_params[1]
+        calibrate_label_probs = calibrate_label_probs / torch.sum(calibrate_label_probs)
+        return label_probs, calibrate_label_probs.squeeze(-1)
+    
+    def _get_reward(self, pos_probs, neg_probs):
+        pos_pos_prob, pos_neg_prob = pos_probs
+        neg_pos_prob, neg_neg_prob = neg_probs
+        pos_reward = ((pos_pos_prob - pos_neg_prob) / (pos_neg_prob + pos_pos_prob))
+        neg_reward = ((neg_neg_prob - neg_pos_prob) / (neg_pos_prob + neg_neg_prob))
+        reward = (pos_reward + neg_reward) / 2 * 100
+        return reward, pos_reward, neg_reward
+    
+    def _get_correct(self, pos_probs, neg_probs):
+        pos_pos_prob, pos_neg_prob = pos_probs
+        neg_pos_prob, neg_neg_prob = neg_probs
+        return [float(pos_pos_prob > pos_neg_prob), float(neg_neg_prob > neg_pos_prob)]
+     
     def forward(self, target_labels: List[str], prompts: List[str], to_tensor: bool, mode: str) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
         if mode not in ["train", "infer"]:
             raise ValueError
             
         source_strings = self._get_inputs(mode, target_labels)
         prompt_strings = self._convert_tokens_to_string(prompts)
-        formatted_prompts = self._format_prompts(source_strings, prompt_strings)
+        calibrate_prompts, formatted_prompts = self._format_prompts(source_strings, prompt_strings, prompt_type='learned')
+        calibrate_manual_prompts, formatted_manual_prompts = self._format_prompts(source_strings, prompt_strings, prompt_type='manual')
+        calibrate_null_prompts, formatted_null_prompts = self._format_prompts(source_strings, prompt_strings, prompt_type='null')
+        
         probs = self._get_probs(formatted_prompts)
-        # len(prompts) == 6
-        # len(formatted_prompts) == 12 (pos + neg)
+        calibrate_params = self._get_calibrate_params(calibrate_prompts) 
+        probs_manual = self._get_probs(formatted_manual_prompts)
+        calibrate_manual_params = self._get_calibrate_params(calibrate_manual_prompts) 
+        probs_null = self._get_probs(formatted_null_prompts)
+        calibrate_null_params = self._get_calibrate_params(calibrate_null_prompts) 
+        
         
         rewards = []
         quantities_to_log: Dict[str, List[FloatTensor]] = defaultdict(list)
             
+            
+        if mode == "infer":
+            print('=' * 20, '\n')
+            
         for batch_index in range(len(prompts)):
-   
+               
             pos_probs = probs[batch_index * 2    ]
             neg_probs = probs[batch_index * 2 + 1]
+            pos_label_probs, pos_calibrate_label_probs = self._get_label_probs(pos_probs, calibrate_params[batch_index])
+            neg_label_probs, neg_calibrate_label_probs = self._get_label_probs(neg_probs, calibrate_params[batch_index])
+            reward, pos_reward, neg_reward = self._get_reward(pos_calibrate_label_probs, neg_calibrate_label_probs)
+
+            pos_probs_manual = probs_manual[batch_index * 2    ]
+            neg_probs_manual = probs_manual[batch_index * 2 + 1]
+            pos_label_probs_manual, pos_calibrate_label_probs_manual = self._get_label_probs(pos_probs_manual, calibrate_manual_params[batch_index])
+            neg_label_probs_manual, neg_calibrate_label_probs_manual = self._get_label_probs(neg_probs_manual, calibrate_manual_params[batch_index])
+            reward_manual, pos_reward_manual, neg_reward_manual = self._get_reward(pos_calibrate_label_probs_manual, neg_calibrate_label_probs_manual)
+
+            pos_probs_null = probs_null[batch_index * 2    ]
+            neg_probs_null = probs_null[batch_index * 2 + 1]
+            pos_label_probs_null, pos_calibrate_label_probs_null = self._get_label_probs(pos_probs_null, calibrate_null_params[batch_index])
+            neg_label_probs_null, neg_calibrate_label_probs_null = self._get_label_probs(neg_probs_null, calibrate_null_params[batch_index])
+            reward_null, pos_reward_null, neg_reward_null = self._get_reward(pos_calibrate_label_probs_null, neg_calibrate_label_probs_null)
             
-            pos_pos_prob, pos_neg_prob = pos_probs[self.pos_id], pos_probs[self.neg_id]
-            neg_pos_prob, neg_neg_prob = neg_probs[self.pos_id], neg_probs[self.neg_id]
-            
-            # UnBounded
-            # pos_reward = ((pos_pos_prob - pos_neg_prob) / (pos_neg_prob))
-            # neg_reward = ((neg_neg_prob - neg_pos_prob) / (neg_pos_prob))
-            
-            # Bounded
-            pos_reward = ((pos_pos_prob - pos_neg_prob) / (pos_neg_prob + pos_pos_prob))
-            neg_reward = ((neg_neg_prob - neg_pos_prob) / (neg_pos_prob + neg_neg_prob))
-            
-            reward = (pos_reward + neg_reward) / 2 * 100
-            
-            quantities_to_log["pp"].append(pos_pos_prob.item())
-            quantities_to_log["pn"].append(pos_neg_prob.item())
-            quantities_to_log["nn"].append(neg_neg_prob.item())
-            quantities_to_log["np"].append(neg_pos_prob.item())
             quantities_to_log["reward"].append(reward.item())
+            quantities_to_log["reward-pos"].append(pos_reward.item())
+            quantities_to_log["reward-neg"].append(neg_reward.item())
+             
+            quantities_to_log["reward_manual"].append(reward_manual.item())
+            quantities_to_log["reward-pos-manual"].append(pos_reward_manual.item())
+            quantities_to_log["reward-neg-manual"].append(neg_reward_manual.item())
+            
+            quantities_to_log["reward_null"].append(reward_null.item())
+            quantities_to_log["reward-pos-null"].append(pos_reward_null.item())
+            quantities_to_log["reward-neg-null"].append(neg_reward_null.item())
+            
+            
+            
+            if mode == 'infer':
+                quantities_to_log["accuracy-pos"] += [self._get_correct(pos_calibrate_label_probs, neg_calibrate_label_probs)[0]]
+                quantities_to_log["accuracy-neg"] += [self._get_correct(pos_calibrate_label_probs, neg_calibrate_label_probs)[1]]
+                quantities_to_log["accuracy"] += self._get_correct(pos_calibrate_label_probs, neg_calibrate_label_probs)
+                quantities_to_log["accuracy-manual"] += self._get_correct(pos_calibrate_label_probs_manual, neg_calibrate_label_probs_manual)
+                quantities_to_log["accuracy-null"] += self._get_correct(pos_calibrate_label_probs_null, neg_calibrate_label_probs_null)
+                
+                
+            quantities_to_log["PP"].append(pos_label_probs[0])
+            quantities_to_log["PN"].append(pos_label_probs[1])
+            quantities_to_log["NN"].append(neg_label_probs[0])
+            quantities_to_log["NP"].append(neg_label_probs[1])
+            
+            quantities_to_log["PP-C"].append(pos_calibrate_label_probs[0])
+            quantities_to_log["PN-C"].append(pos_calibrate_label_probs[1])
+            quantities_to_log["NN-C"].append(neg_calibrate_label_probs[0])
+            quantities_to_log["NP-C"].append(neg_calibrate_label_probs[1])
+                
             
             self._counter += 1
-        
-            print(prompts[batch_index], '\n', 
-                  formatted_prompts[batch_index * 2], '\n', 
-                  formatted_prompts[batch_index * 2 + 1], '\n', 
-                  'PP:', pos_pos_prob.item(), '|',
-                  'PN:', pos_neg_prob.item(), '|',
-                  'NN:', neg_neg_prob.item(), '|',
-                  'NP:', neg_pos_prob.item(), '|',
-                  'Reward:', round(reward.item(), 2))
+            
+            if mode == 'infer':
+                print("*" * 10, '\n',
+                      'Batch:', batch_index, '\n',
+                      prompts[batch_index],  '\n', 
+                      formatted_prompts[batch_index * 2], '\n', 
+                      formatted_prompts[batch_index * 2 + 1], '\n', 
+                      'Reward:', round(reward.item(), 2), '\n',
+                      'Correct:', quantities_to_log["accuracy"][-2:], '\n',
+                      'Correct-manual:', quantities_to_log["accuracy-manual"][-2:], '\n'
+                      'Correct-null:', quantities_to_log["accuracy-null"][-2:])
+            
+            if mode == 'train':
+                print(prompts[batch_index], round(reward.item(), 2), end='\r')
             
             rewards.append(reward)
-            
-        rewards_tensor = torch.stack(rewards)
         
+        
+        rewards_tensor = torch.stack(rewards)
         rewards_log = dict(
             (reward_key, torch.mean(torch.tensor(reward_vals)))
             for reward_key, reward_vals in quantities_to_log.items())
