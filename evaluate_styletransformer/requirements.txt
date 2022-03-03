@@ -1,0 +1,7 @@
+torch
+fasttext==0.8.3
+torchtext
+nltk
+tqdm
+wandb
+Cython
