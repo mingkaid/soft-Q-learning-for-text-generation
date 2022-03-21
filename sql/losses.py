@@ -210,6 +210,7 @@ def soft_q_loss_with_sparse_rewards_2(
         shape=actions.shape)
     V = logits.logsumexp(dim=-1)
     A = Q - V
+    # print(Q)
 
     # Target outputs
     Q_ = torch.zeros_like(Q)
@@ -261,6 +262,7 @@ def soft_q_loss_with_sparse_rewards_3(
         tensor=logits,
         index=actions,
         shape=actions.shape)
+    # print(Q)
     V = logits.logsumexp(dim=-1)
     A = Q - V
 
@@ -426,6 +428,8 @@ def soft_q_loss_with_sparse_rewards_2_2_reversed_3_3_reversed(
         coefficient=coefficient)
 
     raw_losses = (raw_losses_2 + raw_losses_3) / 2
+    # print(rewards)
+    # print(raw_losses)
 
     sql_utils.add_prefix_to_dict_keys_inplace(
         quantities_to_log_2, prefix="v2/")

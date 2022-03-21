@@ -18,7 +18,7 @@ import torch
 import torch.nn as nn
 import texar.torch as tx
 from functools import partial
-from typing import Union, Tuple, Dict, Any, Optional
+from typing import List, Tuple, Union, Dict, Optional, Callable, Any, cast
 
 from configs.models import (
     config_model_transformers_small)
@@ -104,8 +104,10 @@ class GPT2ConditionedMLP(nn.Module):
     temp_input_3 = "someone should buy this place and turn it into what it should be."
     temp_input_6 = "manager actually has respect for the customer instead of ignoring them ."
     
-    # sentence_1 = 'thank you for a five star service .'
-    sentence_1 = 'classification'
+    sentence_1 = 'thank you for a five star service .'
+#     sentence_1 = 'classification'
+#     sentence_1 = 'Prompt: '
+
     def __init__(self, 
                  train_data: tx.data.PairedTextData,
                  max_source_length: int,
@@ -144,23 +146,81 @@ class GPT2ConditionedMLP(nn.Module):
         if mode == 'gpt2_vocab': 
             self.mlp = _build_gpt2_vocab_mlp(self.target_vocab_size).to(0)
             self._mlp_forward = self._gpt2_vocab_mlp_forward
-            self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
-                                                  'experiments/valid_gpt2_token_ids.yelp_negative_prep'))
+#             self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
+#                                                   'experiments/valid_gpt2_token_ids.yelp_negative_prep'))
             self.valid_token_ids = None
         elif mode == 'self_vocab': 
             self.mlp = _build_self_vocab_mlp(self.target_vocab_size).to(0)
             self._mlp_forward = self.mlp
 
-        self.temp_input = self.sentence_1
+            
+#         self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps. the',
+#                                'challenging but fun course! the',
+#                                'beautiful views and lots of variety of length and layout of holes. the',
+#                                "i'll definitely be back! the",
+#                                'the service and prices were great. the',
+#                                'i had the buffalo chicken sandwich and it was delicious. the',
+#                                'a cool bar off the beaten path that is a worth a trip. the',
+#                                'awesome drink specials during happy hour. the',
+#                                'fantastic wings that are crispy and delicious, wing night on tuesday and thursday! the',
+#                                'the sandwiches are always amazing just as i remember. the',
+#                                'the staff is amazing and friendly. the',
+#                                'great place for lunch as well. the',
+#                                'friendly staff, good food, great beer selection, and relaxing atmosphere. the',
+#                                "great wings and the buffalo chicken pizza is the best i've had. the",
+#                                'the sandwiches are all on thick cut italian bread and fresh. the',
+#                                'if we ever get to the pittsburgh area again, we will go back! the']
+        
+        self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps.',
+                               'challenging but fun course!',
+                               'beautiful views and lots of variety of length and layout of holes.',
+                               "i'll definitely be back!",
+                               'the service and prices were great.',
+                               'i had the buffalo chicken sandwich and it was delicious.',
+                               'a cool bar off the beaten path that is a worth a trip.',
+                               'awesome drink specials during happy hour.',
+                               'fantastic wings that are crispy and delicious, wing night on tuesday and thursday!',
+                               'the sandwiches are always amazing just as i remember.',
+                               'the staff is amazing and friendly.',
+                               'great place for lunch as well.',
+                               'friendly staff, good food, great beer selection, and relaxing atmosphere.',
+                               "great wings and the buffalo chicken pizza is the best i've had.",
+                               'the sandwiches are all on thick cut italian bread and fresh.',
+                               'if we ever get to the pittsburgh area again, we will go back!']
+        
+        self.dataset_inputs = ['challenging but fun course!',
+                               "i'll definitely be back!",
+                               'the service and prices were great.',
+                               'i had the buffalo chicken sandwich and it was delicious.',
+                               'thank you for a five star service.',
+                               # 'a cool bar off the beaten path that is a worth a trip.',
+                               'awesome drink specials during happy hour.',
+                               'fantastic wings that are crispy and delicious, wing night on tuesday and thursday!',
+                               'the sandwiches are always amazing just as i remember.']
+        
+        self.dataset_inputs = ['thank you for a five star service.',
+                               'this is good.']
+        
+        self.temp_input = 'this is good.'
+        # self.temp_input = ' '
+        # self.temp_input = 'Prompt:'
+        # self.temp_input = 'classification'
+        # self.temp_input = self.sentence_1
 #         self.temp_input = self.sentence_2
 #         self.temp_input = self.temp_input_2
 #         self.temp_input = self.temp_input_0
         # self.temp_input = self.temp_input_6
+        self._tst_inputs = self._load_tst_inputs()
+        self._tst_inputs_idx = {('train', 'LABEL_0'): 0, 
+                                ('train', 'LABEL_1'): 0,
+                                ('infer', 'LABEL_0'): 0,
+                                ('infer', 'LABEL_1'): 0}
+        self.fluent = False
         
 
         def init_weights(m):
             if isinstance(m, nn.Linear):
-                torch.nn.init.xavier_uniform_(m.weight, gain=0.01)
+                torch.nn.init.xavier_uniform_(m.weight, gain=0.0001)
                 m.bias.data.fill_(0.0001)
         self.mlp.apply(init_weights)
     
@@ -170,12 +230,48 @@ class GPT2ConditionedMLP(nn.Module):
         logits = self.generator.model.lm_head(mlp_output)
         if self.valid_token_ids is not None: 
             logits = logits[:, self.valid_token_ids]
+            
+        if self.fluent: 
+            plm_logits = self.generator.model.lm_head(state)
+            values, _ = torch.topk(plm_logits, k=20)
+            min_values: torch.Tensor = values[:, -1].unsqueeze(-1)
+            logits = torch.where(
+                plm_logits < min_values,
+                torch.full_like(logits, float('-inf')), logits)
         # print(logits.shape)
         zeros = torch.ones_like(logits)[:, :4] * float('-inf')
         # print(zeros)
         modified_logits = torch.cat([zeros, logits], dim=-1)
         # print(modified_logits.shape)
         return modified_logits
+    
+    def _load_tst_inputs(self) -> Dict[Tuple[Any], List[str]]: 
+        tst_inputs = {}
+        # tokenizer = self._generator.tokenizer
+        filepath_train_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
+        filepath_train_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
+        filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
+        filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
+        
+        with open(filepath_train_0) as f: 
+            sentences_train_0 = [line.strip() for line in f]
+        with open(filepath_train_1) as f: 
+            sentences_train_1 = [line.strip() for line in f]
+        with open(filepath_dev_0) as f: 
+            sentences_dev_0 = [line.strip() for line in f]
+        with open(filepath_dev_1) as f: 
+            sentences_dev_1 = [line.strip() for line in f]
+            
+        idx = 43
+        size = 2
+        tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
+        tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
+        # tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
+        # tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:]
+        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
+        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
+        
+        return tst_inputs
         
     def decode_teacher_forcing(self,
                                batch: BatchType,
@@ -242,7 +338,7 @@ class GPT2ConditionedMLP(nn.Module):
             # logits = self.mlp(state)
             logits = self._mlp_forward(state)
 #             print(state.min().item(), state.max().item())
-            print(logits.min().item(), logits.max().item())
+            print(logits[:, 4:].min().item(), logits.max().item())
             
             if top_k is not None: sampling_logits = _top_k_logits(logits, k=top_k)
             elif top_p is not None: sampling_logits = _top_p_logits(logits, p=top_p)
@@ -297,6 +393,7 @@ class GPT2ConditionedMLP(nn.Module):
             last_token_hidden_state,
             past_key_values,
             corruption_p: Optional[float] = None,
+            input_mode='train',
             **kwargs
     ) -> Dict[str, torch.Tensor]:
 
@@ -305,6 +402,9 @@ class GPT2ConditionedMLP(nn.Module):
         for i in range(self.max_decoding_length): 
             # logits = self.mlp(state) # [batch_size, vocab_size]
             logits = self._mlp_forward(state)
+            if input_mode == 'infer': 
+                print('State:', state)
+                print('Logits:', logits)
             
             # actions = torch.distributions.categorical.Categorical(logits).sample() # [batch_size]
             actions = logits.argmax(dim=-1) # [batch_size]
@@ -317,16 +417,26 @@ class GPT2ConditionedMLP(nn.Module):
             tokens = [self.generator.tokenizer.convert_tokens_to_string([t]) \
                       for t in tokens]
             # tokens = [' ' + t for t in tokens]
-            input_ids = (self.generator
-                         .tokenizer(tokens, 
-                                    return_tensors='pt')
-                         ['input_ids']
-                         .to(0))
+#             input_ids = (self.generator
+#                          .tokenizer(tokens, 
+#                                     return_tensors='pt')
+#                          ['input_ids']
+#                          .to(0))
+            token_encoding = (self.generator
+                               .tokenizer(tokens, 
+                                          padding=True,
+                                          return_tensors='pt')
+                               .to(0))
+            input_ids = token_encoding['input_ids']
+            input_lengths = token_encoding['attention_mask'].sum(dim=1)
+
             next_outputs = (self.generator.model
                             .transformer(input_ids, 
                                          past_key_values=past_key_values, 
                                          use_cache=True))
-            state = next_outputs.last_hidden_state[:, -1, :]
+            # state = next_outputs.last_hidden_state[:, -1, :]
+            state = next_outputs.last_hidden_state[np.arange(input_ids.shape[0]), 
+                                                   (input_lengths - 1)]
             past_key_values = next_outputs.past_key_values
             
         sample_ids = torch.cat(sample_ids, dim=1) # [batch_size, prompt_length]
@@ -344,28 +454,84 @@ class GPT2ConditionedMLP(nn.Module):
                 )
             }
     
+    def _get_inputs(self, mode: str, target_labels: List[str]): 
+        # data_0 = self._tst_inputs[(mode, 'LABEL_0')]
+        # data_1 = self._tst_inputs[(mode, 'LABEL_1')]
+        
+        # idx_0 = self._tst_inputs_idx[(mode, 'LABEL_0')]
+        # idx_1 = self._tst_inputs_idx[(mode, 'LABEL_1')]
+        
+        inputs = []
+        for i, label in enumerate(target_labels): 
+            idx = self._tst_inputs_idx[(mode, label)]
+            data = self._tst_inputs[(mode, label)]
+            
+            # inputs.append(self.temp_input)
+            if mode == 'train': 
+                # inputs.append('thank you for a five star service.')
+                # inputs.append(self.temp_input)
+                inputs.append(self.dataset_inputs[idx])
+            else: 
+                inputs.append(self.dataset_inputs[idx])
+                
+            # inputs.append('Prompt:')
+            # inputs.append(self.dataset_inputs[idx])
+            # inputs.append(data[idx])
+            idx += 1
+            idx %= len(data)
+            self._tst_inputs_idx[(mode, label)] = idx
+        
+        return inputs
+    
     def forward(self,
                 batch: BatchType,
                 mode: ForwardMode,
                 **kwargs) -> Union[Tuple[tx.modules.TransformerDecoderOutput, 
                                          LongTensor], 
                                    Dict]:        
-        formatted_input_template = self.input_template.format(sentence_1=self.sentence_1)
-        input_ids = (self.generator
-                     .tokenizer([self.temp_input \
-                                 for _ in range(len(batch['source_text']))], 
-                                return_tensors='pt')['input_ids']
-                     .to(0))
+        # print(batch['source_text'])
+        target_labels = [t[0] for t in batch['source_text']]
+        if mode in [ForwardMode.INFER]: 
+            input_mode = 'infer'
+        else: 
+            input_mode = 'train'
+        input_texts = self._get_inputs(input_mode, target_labels)
+        
+        if input_mode == 'infer': 
+            print('Infer Inputs:', input_texts)
+        
+        # print('Model:', input_texts)
+        
+        # input_texts = [self.temp_input for _ in range(len(batch['source_text']))]
+        
+        token_encoding = (self.generator
+                          .tokenizer(input_texts, 
+                                     padding=True,
+                                     return_tensors='pt')
+                          .to(0))
+        input_ids = token_encoding['input_ids']
+        input_lengths = token_encoding['attention_mask'].sum(dim=1)
         outputs = (self.generator.model
                    .transformer(input_ids, use_cache=True))
-        last_token_hidden_state = outputs.last_hidden_state[:, -1, :]
+        last_token_hidden_state = outputs.last_hidden_state[np.arange(input_ids.shape[0]), 
+                                                            (input_lengths - 1)]
         past_key_values = outputs.past_key_values
+        
+#         input_ids = (self.generator
+#                      .tokenizer(input_texts, 
+#                                 return_tensors='pt')['input_ids']
+#                      .to(0))
+#         outputs = (self.generator.model
+#                    .transformer(input_ids, use_cache=True))
+#         last_token_hidden_state = outputs.last_hidden_state[:, -1, :]
+#         past_key_values = outputs.past_key_values
         
         if mode in [ForwardMode.MLE, ForwardMode.SQL_OFF_GT]:
             return self.decode_teacher_forcing(
                 batch=batch,
                 last_token_hidden_state=last_token_hidden_state,
-                past_key_values=past_key_values)
+                past_key_values=past_key_values,
+                **kwargs)
 
         if mode in [ForwardMode.PG, ForwardMode.SQL_ON]:
             return self.decode_sampling(
@@ -379,6 +545,7 @@ class GPT2ConditionedMLP(nn.Module):
                 batch=batch,
                 last_token_hidden_state=last_token_hidden_state,
                 past_key_values=past_key_values,
+                input_mode=input_mode,
                 **kwargs)
 
         raise ValueError(f"Unknown mode {mode}")
