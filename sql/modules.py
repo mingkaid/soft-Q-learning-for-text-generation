@@ -1,3 +1,4 @@
+import omegaconf
 import torch
 import texar.torch as tx
 from typing import Tuple, Dict, Union, Optional, Callable, Any, cast
@@ -32,6 +33,7 @@ class TXSoftQModel(SoftQModelBase):
             reward_shaping_max: float,
             beam_width: int,
             reward_name: str,
+            class_config: omegaconf.DictConfig,
             sql_loss_coefficients: Optional[float] = None,
             sql_loss_margin_constant: Optional[float] = None,
             sql_loss_margin_coefficient: Optional[float] = None,
@@ -80,7 +82,8 @@ class TXSoftQModel(SoftQModelBase):
             top_k=top_k,
             top_p=top_p,
             beam_width=beam_width,
-            reward_name=reward_name)
+            reward_name=reward_name,
+            class_config=class_config)
 
         if not (isinstance(self._model, Transformer) or isinstance(self._model, GPT2ConditionedMLP)):
             raise TypeError

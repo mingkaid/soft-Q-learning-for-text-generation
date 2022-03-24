@@ -1,3 +1,4 @@
+import omegaconf
 import torch
 import texar.torch as tx
 from typing import Tuple, Dict, Union, Any, Optional, Type, Callable
@@ -7,6 +8,7 @@ from sql import utils as sql_utils
 from sql import losses as sql_losses
 from sql.utils import ForwardMode
 from sql.rewards import reward_name_to_cls_map
+from sql.rewards_glue import reward_name_to_glue_map
 from sql.types import BatchType, HF_BatchType, FloatTensor, LongTensor
 
 
@@ -49,6 +51,7 @@ class SoftQModelBase(torch.nn.Module):
             top_p: Optional[float] = None,
             beam_width: Optional[int] = None,
             reward_name: Optional[str] = None,
+            class_config: Optional[omegaconf.DictConfig] = None,
     ) -> None:
         super().__init__()
         if (target_update_method is not None and
@@ -90,7 +93,10 @@ class SoftQModelBase(torch.nn.Module):
         self._beam_width = beam_width
 
         if reward_name is not None:
-            self._reward_function = reward_name_to_cls_map[reward_name]()
+            if reward_name in reward_name_to_glue_map:
+                self._reward_function = reward_name_to_glue_map[reward_name](class_config)
+            if reward_name in reward_name_to_cls_map:
+                self._reward_function = reward_name_to_cls_map[reward_name]()
         else:
             self._reward_function = None
 

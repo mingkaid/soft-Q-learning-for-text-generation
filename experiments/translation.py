@@ -115,7 +115,7 @@ def prepare_model(
         colorful_warning(f"Loaded behavior model from "
                          f"{behavior_checkpoint_path}",
                          bg="blue")
-
+        
     model = TXSoftQModel(
         model_constructor=(
             lambda: ModelClass(
@@ -139,6 +139,7 @@ def prepare_model(
         top_p=config.top_p,
         beam_width=config.beam_width,
         reward_name=config.reward_name,
+        class_config=config.classification,
         # Hacks not implemented in parent class
         hack_truncate_length_constant=config.hack_truncate_length_constant,
         # Deprecated Arguments
@@ -417,7 +418,7 @@ def main(config: omegaconf.DictConfig) -> None:
         if config.reward_name in ["rouge", "bleurt", "sentiment", "gpt2-topic", "gpt2-bleu", 
                                   "gpt2-bleu-sentiment", "gpt2-bleu-no-input", "gpt2-sentiment-no-input",
                                   "gpt2-sentiment-bleu-no-input", "gpt2-sentiment-bertscore-no-input",
-                                  'gpt2-trigger','gpt2-classifier',
+                                  'gpt2-trigger','gpt2-classifier','roberta-classifier', 'roberta-glue',
                                   "entailment", "entailment2", "entailment3", "toxicity"]:
             if unique_pairs_file is not None:
                 colorful_warning("Only taking the first reference. "
