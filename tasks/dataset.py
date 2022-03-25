@@ -516,10 +516,6 @@ class FewShotDataset(torch.utils.data.Dataset):
             label_word_list=self.label_word_list,
             verbose=False,
         )
-        
-        if self.mode == 'test':
-            print(example)
-            
         return features
     
     def set_learned_prompt(self, prompt_string):

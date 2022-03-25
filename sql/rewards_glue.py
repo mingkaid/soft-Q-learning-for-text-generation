@@ -117,7 +117,7 @@ class RoBERTaGLUEReward(object):
             logits = logits[range(logits.shape[0]), batch['mask_pos'].squeeze()]
             pred_labels += logits[:, self.labels_tok].argmax(1).tolist()
             true_labels += batch['labels'].squeeze().tolist()
-            
+
         metrics = self.metrics_fn(self.config.task_name, np.array(pred_labels), np.array(true_labels))
         return metrics
         
@@ -153,13 +153,13 @@ class RoBERTaGLUEReward(object):
             metric_key = max(l_metrics.keys(), key=lambda x: len(x))
             
             if len(self.best_prompts_metrics) < self.top_k:
-                self.best_prompts.append(prompts[0])
+                self.best_prompts.append(prompt_strings[0])
                 self.best_prompts_metrics.append(rewards_log[metric_key].item())
             elif rewards_log[metric_key].item() > min(self.best_prompts_metrics):
                 idx = np.argmin(self.best_prompts_metrics)
                 self.best_prompts.pop(idx)
                 self.best_prompts_metrics.pop(idx)
-                self.best_prompts.append(prompts[0])
+                self.best_prompts.append(prompt_strings[0])
                 self.best_prompts_metrics.append(rewards_log[metric_key].item())
             
             if self.manual_metrics == None:
@@ -172,6 +172,7 @@ class RoBERTaGLUEReward(object):
             print('=' * 20)
             print('Prompts:', self.best_prompts)
             print(f'Dev  {metric_key}:', self.best_prompts_metrics)
+            print('Best prompt:', self.best_prompts[np.argmax(self.best_prompts_metrics)])
             print(f'Learned Test {metric_key}:', learned_metrics[metric_key])
             print(f'Manual  Test {metric_key}:',  self.manual_metrics[metric_key])
             
