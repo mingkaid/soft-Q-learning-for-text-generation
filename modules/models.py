@@ -243,7 +243,9 @@ class GPT2ConditionedMLP(nn.Module):
             logits = self._mlp_forward(state)
 #             print(state.min().item(), state.max().item())
 #             print(logits.min().item(), logits.max().item())
-            
+            normalized_logits = torch.softmax(logits, dim=1)
+            print(i, torch.topk(normalized_logits, 10).indices[0].cpu(), torch.topk(normalized_logits, 10).values[0].cpu())
+    
             if top_k is not None: sampling_logits = _top_k_logits(logits, k=top_k)
             elif top_p is not None: sampling_logits = _top_p_logits(logits, p=top_p)
             else: sampling_logits = logits

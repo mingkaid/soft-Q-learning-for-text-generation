@@ -27,6 +27,7 @@ from copy import deepcopy
 import pandas as pd
 from hydra.utils import get_original_cwd
 from collections import defaultdict
+import string
 import pdb
 
 logger = logging.getLogger(__name__)
@@ -148,7 +149,11 @@ def tokenize_multipart_input(
             elif part[:6] == 'sent-_':
                 # Delete the last token
                 sent_id = int(part.split('_')[1])
-                new_tokens += enc(input_text_list[sent_id][:-1])
+                sent = input_text_list[sent_id]
+                if sent[-1] in string.punctuation:
+                    sent = sent[:-1]
+                new_tokens += enc(sent)
+                
             elif part[:6] == 'sentl_':
                 # Lower case the first token
                 sent_id = int(part.split('_')[1])
@@ -292,7 +297,7 @@ class FewShotDataset(torch.utils.data.Dataset):
 
             for key in self.label_to_word:
                 # For RoBERTa/BART/T5, tokenization also considers space, so we use space+word as label words.
-                if self.label_to_word[key][0] not in ['<', '[', '.', ',']:
+                if self.label_to_word[key][0] not in ['<', '[', '.', ','] and 'skip_space' not in args:
                     # Make sure space+word is in the vocabulary
                     assert len(tokenizer.tokenize(' ' + self.label_to_word[key])) == 1
                     self.label_to_word[key] = tokenizer.convert_tokens_to_ids(tokenizer.tokenize(' ' + self.label_to_word[key])[0])
@@ -416,33 +421,19 @@ class FewShotDataset(torch.utils.data.Dataset):
                     for support_idx in candidate:
                         sim_score.append((support_idx, util.pytorch_cos_sim(self.support_emb[support_idx], self.query_emb[query_idx])))
                     sim_score.sort(key=lambda x: x[1], reverse=True)
-                    if self.num_labels == 1:
-                        # Regression task
-                        limit_each_label = int(len(sim_score) // 2 * args.demo_filter_rate)
-                        count_each_label = {'0': 0, '1': 0}
-                        context_indices = []
 
-                        if args.debug_mode:
-                            print("Query %s: %s" % (self.query_examples[query_idx].label, self.query_examples[query_idx].text_a)) # debug
-                        for support_idx, score in sim_score:
-                            if count_each_label['0' if float(self.support_examples[support_idx].label) <= median_mapping[args.task_name] else '1'] < limit_each_label:
-                                count_each_label['0' if float(self.support_examples[support_idx].label) <= median_mapping[args.task_name] else '1'] += 1
-                                context_indices.append(support_idx)
-                                if args.debug_mode:
-                                    print("    %.4f %s | %s" % (score, self.support_examples[support_idx].label, self.support_examples[support_idx].text_a)) # debug
-                    else:
-                        limit_each_label = int(len(sim_score) // self.num_labels * args.demo_filter_rate)
-                        count_each_label = {label: 0 for label in self.label_list}
-                        context_indices = []
+                    limit_each_label = int(len(sim_score) // self.num_labels * args.demo_filter_rate)
+                    count_each_label = {label: 0 for label in self.label_list}
+                    context_indices = []
 
-                        if args.debug_mode:
-                            print("Query %s: %s" % (self.query_examples[query_idx].label, self.query_examples[query_idx].text_a)) # debug
-                        for support_idx, score in sim_score:
-                            if count_each_label[self.support_examples[support_idx].label] < limit_each_label:
-                                count_each_label[self.support_examples[support_idx].label] += 1
-                                context_indices.append(support_idx)
-                                if args.debug_mode:
-                                    print("    %.4f %s | %s" % (score, self.support_examples[support_idx].label, self.support_examples[support_idx].text_a)) # debug
+                    if args.debug_mode:
+                        print("Query %s: %s" % (self.query_examples[query_idx].label, self.query_examples[query_idx].text_a)) # debug
+                    for support_idx, score in sim_score:
+                        if count_each_label[self.support_examples[support_idx].label] < limit_each_label:
+                            count_each_label[self.support_examples[support_idx].label] += 1
+                            context_indices.append(support_idx)
+                            if args.debug_mode:
+                                print("    %.4f %s | %s" % (score, self.support_examples[support_idx].label, self.support_examples[support_idx].text_a)) # debug
                 else:
                     # Using demonstrations without filtering
                     context_indices = [support_idx for support_idx in support_indices
@@ -502,7 +493,8 @@ class FewShotDataset(torch.utils.data.Dataset):
         supports = self.select_context([self.support_examples[i] for i in context_indices])
         
         if self.use_learned_prompt:
-            template = re.sub(r'[^\*]*?\*mask\*', r' {}*mask*'.format(self.learned_prompt[i]), self.args.template)
+            # [TODO]
+            template = re.sub(r'[^\*]*?\*mask\*', r'{}*mask*'.format(self.learned_prompt[i]), self.args.template)
         else:
             template = self.args.template
             
@@ -637,7 +629,6 @@ class FewShotDataset(torch.utils.data.Dataset):
                 augmented_example = query_text
                 for label_id in range(len(label_map)):
                     augmented_example += support_by_label[label_id]
-
             # Tokenization (based on the template)
             inputs = tokenize_multipart_input(
                 input_text_list=augmented_example,
@@ -666,7 +657,7 @@ class FewShotDataset(torch.utils.data.Dataset):
     def collate_fn(self, features: List[InputDataClass]) -> Dict[str, Any]:
         if not isinstance(features[0], (dict, BatchEncoding)):
             features = [vars(f) for f in features]
-            
+                
         first = features[0]
         batch = {}
 
@@ -687,7 +678,7 @@ class FewShotDataset(torch.utils.data.Dataset):
         # Handling of all other possible keys.
         # Again, we will use the first element to figure out which key/values are not None for this model.
         for k, v in first.items():
-            if k not in ("label", "label_ids") and v is not None and not isinstance(v, str):
+            if k not in ("label", "label_ids", "token_type_ids") and v is not None and not isinstance(v, str):
                 if isinstance(v, torch.Tensor):
                     batch[k] = torch.stack([f[k] for f in features])
                 else:

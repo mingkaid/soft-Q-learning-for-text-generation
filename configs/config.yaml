@@ -7,7 +7,7 @@ translation:
     save_dir: "???"
     random_seed: 1
     # Training time
-    num_epochs: 10
+    num_epochs: 30
     save_frequency: 1
     num_batches_per_epoch: null
     # Paths
