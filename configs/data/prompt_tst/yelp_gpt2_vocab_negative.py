@@ -9,7 +9,7 @@ source_vocab_file = os.path.join(base_path, "vocab.source.negative")
 target_vocab_file = os.path.join(base_path, "vocab.target.gpt2")
 
 train = {
-    "batch_size": 16,
+    "batch_size": 8,
     "allow_smaller_final_batch": False,
     "shuffle": False,
     "source_dataset": {

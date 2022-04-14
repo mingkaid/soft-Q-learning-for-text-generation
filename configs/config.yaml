@@ -40,5 +40,6 @@ translation:
     # Warmup
     warmup_training_mode: null
     warmup_num_epochs: null
+    num_warmup_batches_per_epoch: null
     # Hacks
     hack_truncate_length_constant: null

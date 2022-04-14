@@ -1423,6 +1423,42 @@ from ctc_score import StyleTransferScorer
 from bert_score import BERTScorer
 
 from transformers import LogitsProcessor, LogitsProcessorList
+
+import math
+
+class RunningMeanStd(object):
+    def __init__(self, epsilon=1e-4, shape=()):
+        """
+        calulates the running mean and std of a data stream
+        https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Parallel_algorithm
+        :param epsilon: (float) helps with arithmetic issues
+        :param shape: (tuple) the shape of the data stream's output
+        """
+        self.mean = np.zeros(shape, 'float64')
+        self.var = np.ones(shape, 'float64')
+        self.count = epsilon
+
+    def update(self, arr):
+        batch_mean = np.mean(arr, axis=0)
+        batch_var = np.var(arr, axis=0)
+        batch_count = arr.shape[0]
+        self.update_from_moments(batch_mean, batch_var, batch_count)
+
+    def update_from_moments(self, batch_mean, batch_var, batch_count):
+        delta = batch_mean - self.mean
+        tot_count = self.count + batch_count
+
+        new_mean = self.mean + delta * batch_count / tot_count
+        m_a = self.var * self.count
+        m_b = batch_var * batch_count
+        m_2 = m_a + m_b + np.square(delta) * self.count * batch_count / (self.count + batch_count)
+        new_var = m_2 / (self.count + batch_count)
+
+        new_count = batch_count + self.count
+
+        self.mean = new_mean
+        self.var = new_var
+        self.count = new_count
         
 class GPT2SentimentBLEUNoInputReward(object):
     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix.txt"
@@ -1442,7 +1478,7 @@ class GPT2SentimentBLEUNoInputReward(object):
             num_return_sequences_infer: int = 128,
             # topic_scores_aggregator: Optional[Callable[[List[float]], Union[float, np.number]]] = None,
             include_perplexity: bool = False,
-            return_intermediate_outputs: bool = True,
+            return_intermediate_outputs: bool = False,
     ) -> None:
 
         if include_perplexity is True:
@@ -1472,11 +1508,7 @@ class GPT2SentimentBLEUNoInputReward(object):
         self._num_return_sequences_train = num_return_sequences_train
         self._num_return_sequences_infer = num_return_sequences_infer
         self._tst_templates = self.load_tst_templates()
-        self._tst_inputs = self._load_tst_inputs()
-        self._tst_inputs_idx = {('train', 'LABEL_0'): 0, 
-                                ('train', 'LABEL_1'): 0,
-                                ('infer', 'LABEL_0'): 0,
-                                ('infer', 'LABEL_1'): 0}
+        
 
         ### Modification starts ###
         self._warm_up_reward = False
@@ -1507,23 +1539,136 @@ class GPT2SentimentBLEUNoInputReward(object):
                                'the sandwiches are all on thick cut italian bread and fresh.',
                                'if we ever get to the pittsburgh area again, we will go back!']
         
-        self.dataset_inputs = ['challenging but fun course!',
+        self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps.',
+                               'challenging but fun course!',
+                               'beautiful views and lots of variety of length and layout of holes.',
                                "i'll definitely be back!",
                                'the service and prices were great.',
                                'i had the buffalo chicken sandwich and it was delicious.',
-                               'thank you for a five star service.',
-                               # 'a cool bar off the beaten path that is a worth a trip.',
-                               'awesome drink specials during happy hour.',
-                               'fantastic wings that are crispy and delicious, wing night on tuesday and thursday!',
-                               'the sandwiches are always amazing just as i remember.']
+                               'a cool bar off the beaten path that is a worth a trip.',
+                               'awesome drink specials during happy hour.',]
+        import itertools
+        self.n_repeats = 4
+        self.dataset_inputs = list(itertools.chain(*[[s for _ in range(self.n_repeats)] for s in self.dataset_inputs]))
+        print(self.dataset_inputs)
         
-        self.dataset_inputs = ['thank you for a five star service.',
-                               'this is good.']
+#         self.dataset_inputs = ['challenging but fun course!',
+#                                "i'll definitely be back!",
+#                                'the service and prices were great.',
+#                                'i had the buffalo chicken sandwich and it was delicious.',
+#                                'thank you for a five star service.',
+#                                # 'a cool bar off the beaten path that is a worth a trip.',
+#                                'awesome drink specials during happy hour.',
+#                                'fantastic wings that are crispy and delicious, wing night on tuesday and thursday!',
+#                                'the sandwiches are always amazing just as i remember.']
+        
+        # self.dataset_inputs = ['this is good.']
+    
+#         self.dataset_inputs = ['thank you for a five star service.',
+#                                'this is good.']
+        
+        # self.dataset_inputs = ['thank you for a five star service.']
+        
+        # self.dataset_inputs = ['the service and prices were great.']
+        
+#         self.dataset_inputs = ['thank you for a five star service.',
+#                                'the service and prices were great.']
+
+        # self.dataset_inputs = ["i'll definitely be back!"]
+    
+#         self.dataset_inputs = ["i'll definitely be back!",
+#                                'this is good.']
+        
+#         self.dataset_inputs = ["i'll definitely be back!",
+#                                'this is good.',
+#                                'the prices were great.',
+#                                'great place for lunch as well.']
+        
+#         self.dataset_inputs = ["i'll definitely be back!",
+#                                'this is good.',
+#                                'the service and prices were great.',
+#                                'great place for lunch as well.']
+
+        # self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps.']
+        
+        # self.dataset_inputs = ['i had the buffalo chicken sandwich and it was delicious.']
+        
+        # self.dataset_inputs = ['a cool bar off the beaten path that is a worth a trip.']
+        
+        # self.dataset_inputs = ['challenging but fun course!']
+        
+        # self.dataset_inputs = ['awesome drink specials during happy hour.']
+        
+        # self.dataset_inputs = ['the service and prices were great.']
+        
+        # self.dataset_inputs = ['beautiful views and lots of variety of length and layout of holes.']
+        
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'beautiful views and lots of variety of length and layout of holes.']
+        
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'the service and prices were great.']
+        
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'the service and prices were great.',
+#                                'beautiful views and lots of variety of length and layout of holes.']
+
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'the service and prices were great.',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                'challenging but fun course!']
+    
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'awesome drink specials during happy hour.',
+#                                'awesome drink specials during happy hour.',
+#                                'awesome drink specials during happy hour.',
+#                                'the service and prices were great.',
+#                                'the service and prices were great.',
+#                                'the service and prices were great.',
+#                                'the service and prices were great.',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                'challenging but fun course!',
+#                                'challenging but fun course!',
+#                                'challenging but fun course!',
+#                                'challenging but fun course!']
+
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'thank you for a five star service.']
+    
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'the service and prices were great.',
+#                                'thank you for a five star service.']
+
+        # self.dataset_inputs = ['the prices were great.']
+        
+        # self.dataset_inputs = ['the service and prices were good.']
+        
+        # self.dataset_inputs = ['great place for lunch as well.']
+        
+#         self.dataset_inputs = ['great place for lunch as well.',
+#                                'this is good.']
+        
+#         self.dataset_inputs = ['thank you for a five star service.',
+#                                'this is good.',
+#                                'the service and prices were great.',
+#                                'great place for lunch as well.']
         
         self.temp_input = 'this is good.'
         self.sbert = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         self.ctc_scorer = StyleTransferScorer(align='E-roberta')
         self._bert_scorer = BERTScorer('roberta-large', device=0, rescale_with_baseline=True, lang='en')
+        
+        self._tst_inputs = self._load_tst_inputs()
+        self._tst_inputs_idx = {('train', 'LABEL_0'): 0, 
+                                ('train', 'LABEL_1'): 0,
+                                ('infer', 'LABEL_0'): 0,
+                                ('infer', 'LABEL_1'): 0}
+        
+        self._tst_input_reward_ranges = defaultdict(tuple)
+        self._tst_input_reward_meanstd = defaultdict(RunningMeanStd)
         
         masked_token_ids = self._get_masked_token_ids(tokenizer)
         class TokenIdMasker(LogitsProcessor): 
@@ -1630,7 +1775,7 @@ class GPT2SentimentBLEUNoInputReward(object):
             sentences_dev_1 = [line.strip() for line in f]
             
         idx = 43
-        size = 2
+        size = len(self.dataset_inputs)
         tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
         tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
         # tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
@@ -1675,6 +1820,9 @@ class GPT2SentimentBLEUNoInputReward(object):
         # idx_1 = self._tst_inputs_idx[(mode, 'LABEL_1')]
         
         inputs = []
+        indices = []
+        
+        nunique_inputs = len(set(self.dataset_inputs))
         for i, label in enumerate(target_labels): 
             idx = self._tst_inputs_idx[(mode, label)]
             data = self._tst_inputs[(mode, label)]
@@ -1687,13 +1835,15 @@ class GPT2SentimentBLEUNoInputReward(object):
                 inputs.append(self.dataset_inputs[idx])
             else: 
                 inputs.append(self.dataset_inputs[idx])
+            # print(idx)
+            indices.append(int(idx // self.n_repeats))
                 
             # inputs.append(self.dataset_inputs[idx])
             idx += 1
             idx %= len(data)
             self._tst_inputs_idx[(mode, label)] = idx
         
-        return inputs
+        return indices, inputs
 
 
     def evaluate_generated_texts(self,
@@ -1742,10 +1892,15 @@ class GPT2SentimentBLEUNoInputReward(object):
         except ValueError: 
             end = end
 
-        return text[:end+1].strip()
+        return text[:end+1].strip().lower()
 
 
-    def forward(self, target_labels: List[str], prompts: List[str], to_tensor: bool, mode: str) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
+    def forward(self, 
+                target_labels: List[str], 
+                prompts: List[str],
+                to_tensor: bool, 
+                mode: str, 
+                k_reward=4) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
         if mode not in ["train", "infer"]:
             raise ValueError
         assert all([label in ['LABEL_0', 'LABEL_1'] for label in target_labels])
@@ -1760,7 +1915,7 @@ class GPT2SentimentBLEUNoInputReward(object):
         #         - Dict of {"generated_text": str}
         self.tokens_explored = self.tokens_explored.union(*[set(p.split()) for p in prompts])
         # print(len(self.tokens_explored) + ' tokens explored')
-        source_strings = self._get_inputs(mode, target_labels)
+        source_indices, source_strings = self._get_inputs(mode, target_labels)
         # print('Reward:', source_strings)
         prompt_strings = self._convert_tokens_to_string(prompts)
         formatted_prompts = self._format_prompts(source_strings, prompt_strings)
@@ -1770,10 +1925,28 @@ class GPT2SentimentBLEUNoInputReward(object):
         if mode == 'infer': 
             print('Infer Reward Inputs:', source_strings)
 
-        self._counter += 1
+        if mode == 'train': 
+            self._counter += 1
 #         print(input_length)
+
+        from torch.utils.data import Dataset
+        class MyDataset(Dataset):
+            def __init__(self, x):
+                self.samples = x
+
+            def __getitem__(self,index):
+                return self.samples[index]
+
+            def __len__(self):
+                return len(self.samples)
+
+        n_reward = 32
+        k_reward = 8
+        N = n_reward + k_reward
+        X = MyDataset(formatted_prompts)
         generator_outputs: List[List[Dict[str, Any]]] = self._generator(
-            formatted_prompts,
+            # formatted_prompts,
+            X,
             # max_length=self._max_length,
             # max_new_tokens=input_length,
             pad_token_id=50256,
@@ -1781,14 +1954,17 @@ class GPT2SentimentBLEUNoInputReward(object):
             # logits_processor=self.logits_processor_list,
             # top_p=0.6,
 #             do_sample=False,
-            num_return_sequences=16,
-            temperature=self.temperature,
+            # no_repeat_ngram_size=2,
+            num_return_sequences=N,
+            temperature=1,
             # Only return generated text, without the prompt
             return_full_text=False)
 
         rewards: List[FloatTensor] = []
+        input_rewards: Dict(str, List(float)) = defaultdict(list)
         quantities_to_log: Dict[str, List[FloatTensor]] = defaultdict(list)
-        for batch_index in range(len(prompts)):
+        for batch_index, out in enumerate(generator_outputs):
+        #range(len(prompts)):
                         
 #             input_length = len(self._generator.tokenizer(source_strings[batch_index])['input_ids']) + 5
 #             print(input_length)
@@ -1804,7 +1980,8 @@ class GPT2SentimentBLEUNoInputReward(object):
 #                 return_full_text=False)
             
             generated_texts = []
-            for output in generator_outputs[batch_index]: 
+            # for output in generator_outputs[batch_index]: 
+            for output in out: 
 #             for output in generator_outputs: 
                 text = output["generated_text"]
 #                 try: 
@@ -1825,8 +2002,9 @@ class GPT2SentimentBLEUNoInputReward(object):
             #         "sequence": str,
             #     }
             try:
-                reference_texts = [source_strings[batch_index] for _ in generator_outputs[batch_index]]
+                # reference_texts = [source_strings[batch_index] for _ in generator_outputs[batch_index]]
 #                 reference_texts = [source_strings[batch_index] for _ in generator_outputs]
+                reference_texts = [source_strings[batch_index] for _ in out]
                 
                 check_Xs_Ys_sizes(generated_texts, reference_texts)
                 
@@ -1876,15 +2054,15 @@ class GPT2SentimentBLEUNoInputReward(object):
                 
                 
                 # recon_rewards = [lp**0.25 * b for lp, b in zip(length_penalties, bertscore_rewards)]
-                # recon_rewards = bertscore_rewards
+                recon_rewards = bertscore_rewards
                 # recon_rewards = [(s + b) / 2 for s, b in zip(sbert_rewards, bleu_rewards)]
                 # recon_rewards = bleu_rewards
-                recon_rewards = sbert_rewards
+                # recon_rewards = sbert_rewards
                 recon = torch.tensor(recon_rewards).float().mean()
                 quantities_to_log["recon"].append(recon)
                 
-
-                classes = self._classifier(generated_texts, truncation=True)
+                X_output = MyDataset(generated_texts)
+                classes = self._classifier(X_output, truncation=True)
                 label = target_labels[batch_index]
                 correct = [(c['label'] == label) for c in classes]
                 acc = torch.tensor(correct).float().mean()
@@ -1904,23 +2082,66 @@ class GPT2SentimentBLEUNoInputReward(object):
                 else:
                     recon_weight = 1
                     style_weight = 1
-                    sum_rewards = [(recon_weight * r + style_weight * 100 * c) / (recon_weight + style_weight) \
+#                     sum_rewards = [(recon_weight * r + style_weight * 100 * c) / (recon_weight + style_weight) \
+#                                    for r, c, p in zip(recon_rewards, correct, probs)]
+                    sum_rewards = [(recon_weight * r + style_weight * 100 * p) / (recon_weight + style_weight) \
                                    for r, c, p in zip(recon_rewards, correct, probs)]
-                    mean_sum_reward = torch.tensor(sum_rewards).float().mean()
-                    max_sum_reward = torch.tensor(sum_rewards).float().max()
+                    # Perform reward clipping
+                    reward_clipping = False
+                    if reward_clipping: 
+                        clip_reward = 85
+                        sum_rewards = [min(r, clip_reward) for r in sum_rewards]
+
+                    # Monte Carlo k_reward times and average
+                    mc_avg = False
+                    if mc_avg:
+                        l = len(sum_rewards)
+                        k = k_reward
+                        segmented_sum_rewards = [sum_rewards[i*l//k:(i+1)*l//k] for i in range(k)]
+
+                        mean_sum_reward = torch.tensor(segmented_sum_rewards).float().mean()
+                        values, indices = torch.tensor(segmented_sum_rewards).float().max(axis=1)
+
+                        list_values = [segmented_sum_rewards[i][index] for i, index in enumerate(indices)]
+                        input_rewards[reference_texts[0]] += list_values
+                        max_sum_reward = values.mean()
+                        
+                        max_reward_value = max(list_values)
+                        
+                    comb_avg = True
+                    assert not (mc_avg and comb_avg)
+                    if comb_avg: 
+                        sorted_sum_rewards = list(sorted(sum_rewards))
+                        n = n_reward
+                        # N = n_reward*k_reward
+                        N = N
+                        NCn = math.comb(N, n)
+                        
+                        max_sum_reward = sum([math.comb(i-1, n-1) * sum_rewards[i-1] / NCn for i in range(n, N+1)])
+                        max_sum_reward = torch.tensor(max_sum_reward).float()
+                        input_rewards[reference_texts[0]] += [max_sum_reward]
+                        max_reward_value = max(sum_rewards)
+                        
                     
-                    log_sum_rewards = [(recon_weight * np.log(r / 100) + style_weight * np.log(p)) / (recon_weight + style_weight) \
-                                   for r, c, p in zip(recon_rewards, correct, probs)]
-                    # print(log_sum_rewards)
-                    mean_log_sum_reward = torch.tensor(log_sum_rewards).float().nanmean()
-                    max_log_sum_reward = torch.nan_to_num(torch.tensor(log_sum_rewards), nan=-100).float().max()
+                    # mean_sum_reward = torch.tensor(sum_rewards).float().mean()
+                    # max_sum_reward = torch.tensor(sum_rewards).float().max()
                     
-                    prod_rewards = [(b * c) for b, c, p in zip(recon_rewards, correct, probs)]
-                    mean_prod_reward = torch.tensor(prod_rewards).float().mean()
-                    max_prod_reward = torch.tensor(prod_rewards).float().max()
+#                     log_sum_rewards = [(recon_weight * np.log(r / 100) + style_weight * np.log(p)) / (recon_weight + style_weight) \
+#                                    for r, c, p in zip(recon_rewards, correct, probs)]
+#                     # print(log_sum_rewards)
+#                     mean_log_sum_reward = torch.tensor(log_sum_rewards).float().nanmean()
+#                     max_log_sum_reward = torch.nan_to_num(torch.tensor(log_sum_rewards), nan=-100).float().max()
+                    
+#                     prod_rewards = [(b * c) for b, c, p in zip(recon_rewards, correct, probs)]
+#                     mean_prod_reward = torch.tensor(prod_rewards).float().mean()
+#                     max_prod_reward = torch.tensor(prod_rewards).float().max()
                     
                     # top_index = 0
-                    top_index = sum_rewards.index(max_sum_reward)
+                    # top_index = sum_rewards.index(max_sum_reward)
+                    # list_values = [segmented_sum_rewards[i][index] for i, index in enumerate(indices)]
+                    # input_rewards[reference_texts[0]] += list_values
+                                        
+                    top_index = sum_rewards.index(max_reward_value)
                     # top_index = log_sum_rewards.index(max_log_sum_reward)
                     # top_index = prod_rewards.index(max_prod_reward)
                     # reward = recon
@@ -1930,13 +2151,59 @@ class GPT2SentimentBLEUNoInputReward(object):
                     # reward = bertscore
                     # reward = max_log_sum_reward
                     # reward = mean_log_sum_reward
-                    reward = max_sum_reward
+                    # reward = max_sum_reward * max(torch.exp(1.5 * (max_sum_reward - 80) / 100), 1)
                     
-                quantities_to_log["mean_prod_reward"].append(mean_prod_reward)
-                quantities_to_log["max_prod_reward"].append(max_prod_reward)
+                    reward = max_sum_reward
+                    # clip_reward = 85
+                    # reward = torch.min(torch.tensor([reward, clip_reward]))
+
+                idx = self.dataset_inputs.index(reference_texts[0])
+                idx_2 = source_indices[batch_index]
+                # assert idx == idx_2, f'{idx} {idx_2}'
+                quantities_to_log[f'example_{idx_2%len(self.dataset_inputs)}_sum_reward'].append(max_sum_reward)
                 
-                quantities_to_log["mean_log_sum_reward"].append(mean_log_sum_reward)
-                quantities_to_log["max_log_sum_reward"].append(max_log_sum_reward)
+                input_zscore = False
+                if input_zscore:
+                    est_mean = self._tst_input_reward_meanstd[reference_texts[0]].mean
+                    est_std = np.sqrt(self._tst_input_reward_meanstd[reference_texts[0]].var)
+                    quantities_to_log[f'example_{idx%len(self.dataset_inputs)}_est_mean'].append(torch.tensor(est_mean).float())
+                    quantities_to_log[f'example_{idx%len(self.dataset_inputs)}_est_std'].append(torch.tensor(est_std).float())
+                    
+                min_max_norm = False
+                if min_max_norm:
+                    # min_max_warmup_steps = 10
+                    min_max_warmup_steps = float('inf')
+                    if self._counter <= min_max_warmup_steps: 
+                        if reference_texts[0] not in self._tst_input_reward_ranges: 
+                            print(f'creating entry for {reference_texts[0]}')
+                            self._tst_input_reward_ranges[reference_texts[0]] = (min(list_values), max(list_values))
+                        prev_min, prev_max = self._tst_input_reward_ranges[reference_texts[0]]
+
+                        curr_min = min(prev_min, min(list_values))
+                        alpha = 0.1
+                        # alpha = 1
+                        if max(list_values) > prev_max: 
+                            curr_max = alpha * max(list_values) + (1 - alpha) * prev_max
+                        else: 
+                            curr_max = prev_max
+                        # curr_min, curr_max = min(prev_min, min(list_values)), max(prev_max, max(list_values))
+                        self._tst_input_reward_ranges[reference_texts[0]] = (prev_min, curr_max)
+
+                    relative_reward = True
+                    input_min, input_max = self._tst_input_reward_ranges[reference_texts[0]]
+                    if relative_reward: reward = (max_sum_reward - input_min) / (input_max - input_min)
+                    
+                    quantities_to_log[f'example_{idx%len(self.dataset_inputs)}_min'].append(torch.tensor(input_min).float())
+                    quantities_to_log[f'example_{idx%len(self.dataset_inputs)}_max'].append(torch.tensor(input_max).float())
+                
+                
+                # quantities_to_log["mean_prod_reward"].append(mean_prod_reward)
+                # quantities_to_log["max_prod_reward"].append(max_prod_reward)
+                
+                # quantities_to_log["mean_log_sum_reward"].append(mean_log_sum_reward)
+                # quantities_to_log["max_log_sum_reward"].append(max_log_sum_reward)
+                
+                # quantities_to_log["num_input_ranges"].append(torch.tensor(len(self._tst_input_reward_ranges)).float())
                 
                 quantities_to_log["sum_reward"].append(max_sum_reward)
                 mean_reward = torch.tensor(sum_rewards).float().mean()
@@ -1948,8 +2215,12 @@ class GPT2SentimentBLEUNoInputReward(object):
                 top_style = torch.tensor(probs[top_index]).float()
                 quantities_to_log["top_style"].append(top_style)
 
-                quantities_to_log["sample_size"].append(torch.tensor(self.sample_size).float())
+                # quantities_to_log["sample_size"].append(torch.tensor(self.sample_size).float())
                 quantities_to_log["num_tokens_explored"].append(torch.tensor(len(self.tokens_explored)).float())
+                
+                # print(source_indices)
+                # print(self.dataset_inputs)
+                # print(reference_texts[0])
                 
                 if self._include_perplexity is True:
                     nll_reward = (
@@ -1959,7 +2230,8 @@ class GPT2SentimentBLEUNoInputReward(object):
                     quantities_to_log["nll"].append(nll_reward)
 
                 # print(source_strings)
-                print(prompts[batch_index], '|', 
+                print(self._counter, '|',
+                      prompts[batch_index], '|', 
                       formatted_prompts[batch_index], '|', 
                       generated_texts[top_index], '|', 
                       'SBERT:', round(sbert_rewards[top_index], 2), '|',
@@ -1970,7 +2242,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                       'Sum Reward:', round(sum_rewards[top_index], 2), '|',
                       'Reward:', round(reward.item(), 2))
                 
-                quantities_to_log[f'example_{batch_index%len(self.dataset_inputs)}_sum_reward'].append(max_sum_reward)
+                
                 rewards.append(reward)
 
             except ValueError as err:
@@ -2025,11 +2297,57 @@ class GPT2SentimentBLEUNoInputReward(object):
 #                 quantities_to_log[f"{sample_size}_mean_reward_var"].append(mean_reward_var)
 
         rewards_tensor = torch.stack(rewards)
+    
+        batch_zscore = True
+        if batch_zscore:
+            by_input = True
+            improved = True
+            if by_input and not improved:
+                source_indices_tensor = torch.tensor(source_indices)
+                M = torch.zeros(source_indices_tensor.max() + 1, len(rewards_tensor))
+                M[source_indices_tensor, torch.arange(len(rewards_tensor))] = 1
+                M = torch.nn.functional.normalize(M, p=1, dim=1)
+                idx_mean = M @ rewards_tensor
+                SS = (rewards_tensor - idx_mean[source_indices_tensor])**2
+                idx_std = M @ SS
+                print(idx_mean)
+                print(idx_std)
+                
+                rewards_tensor = (rewards_tensor - idx_mean.float()[source_indices_tensor]) / \
+                                 (idx_std.float()[source_indices_tensor] + 1e-4)
+                
+            elif by_input and improved: 
+                input_max_reward_means = {k: np.mean(v) for k, v in input_rewards.items()}
+                input_max_reward_stds = {k: np.std(v) for k, v in input_rewards.items()}
+                idx_means = torch.tensor([input_max_reward_means[s] for s in source_strings]).float()
+                idx_stds = torch.tensor([input_max_reward_stds[s] for s in source_strings]).float()
+                print(idx_means)
+                print(idx_stds)
+                
+                rewards_tensor = (rewards_tensor - idx_means) / (idx_stds + 1e-4)
+                
+                
+            else:
+                rewards_tensor = (rewards_tensor - rewards_tensor.mean()) / (rewards_tensor.std() + 1e-4)
+            
+        input_zscore = input_zscore
+        if input_zscore: 
+            for s in set(source_strings):
+                print(s, input_rewards[s])
+                self._tst_input_reward_meanstd[s].update(np.array(input_rewards[s]))
+            reward_means = torch.tensor([self._tst_input_reward_meanstd[s].mean for s in source_strings])
+            reward_stds = torch.tensor([np.sqrt(self._tst_input_reward_meanstd[s].var) for s in source_strings])
+            # print(reward_means, reward_stds)
+            rewards_tensor = (rewards_tensor - reward_means) / (reward_stds + 1e-4)
+            # print(rewards_tensor)
+            rewards_tensor = rewards_tensor.float()
+            
         quantities_to_log["reward_var"].append(torch.var(torch.tensor(rewards)))
         rewards_log = dict(
             (reward_key, torch.stack(reward_vals, dim=0).mean())
             for reward_key, reward_vals in quantities_to_log.items())
 
+        self._return_intermediate_outputs = False
         if self._return_intermediate_outputs is True:
             rewards_log["quantities_to_log"] = quantities_to_log  # type: ignore
             rewards_log["formatted_prompts"] = formatted_prompts  # type: ignore

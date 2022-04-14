@@ -51,14 +51,16 @@ def _build_gpt2_vocab_mlp(out_dim, in_dim=768, device=0):
     A1 = nn.ReLU()
     # D1 = nn.Dropout(p=0.1)
     W2 = nn.Linear(2048, 768)
+    # N2 = nn.LayerNorm(768)
     # O = nn.Linear(64, out_dim)
     
+    # return nn.Sequential(W1, A1, W2, N2)
     return nn.Sequential(W1, A1, W2)
 
 def _build_self_vocab_mlp(out_dim, in_dim=768, device=0): 
-    W1 = nn.Linear(in_dim, 64)
+    W1 = nn.Linear(in_dim, 2048)
     A1 = nn.ReLU()
-    O = nn.Linear(64, out_dim)
+    O = nn.Linear(2048, out_dim)
     return nn.Sequential(W1, A1, O)
 
 
@@ -134,24 +136,39 @@ class GPT2ConditionedMLP(nn.Module):
         self.bos_token_id = train_data.target_vocab.bos_token_id
         self.eos_token_id = train_data.target_vocab.eos_token_id
         
-        self.tokenizer = AutoTokenizer.from_pretrained('gpt2', pad_token='<|endoftext|>')
+        model = 'distilgpt2'
+        self.tokenizer = AutoTokenizer.from_pretrained(model, pad_token='<|endoftext|>')
         self.generator = pipeline("text-generation",
                                   tokenizer=self.tokenizer,
-                                  model="gpt2",
+                                  model=model,
                                   device=0)
         for param in self.generator.model.parameters():
             param.requires_grad = False
         
         mode = 'gpt2_vocab'
+        # mode = 'self_vocab'
+        # mode = 'prep_vocab'
         if mode == 'gpt2_vocab': 
             self.mlp = _build_gpt2_vocab_mlp(self.target_vocab_size).to(0)
             self._mlp_forward = self._gpt2_vocab_mlp_forward
-#             self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
-#                                                   'experiments/valid_gpt2_token_ids.yelp_negative_prep'))
             self.valid_token_ids = None
         elif mode == 'self_vocab': 
-            self.mlp = _build_self_vocab_mlp(self.target_vocab_size).to(0)
-            self._mlp_forward = self.mlp
+            self.mlp = _build_self_vocab_mlp(self.target_vocab_size - 4).to(0)
+            # self._mlp_forward = self.mlp
+            self._mlp_forward = self._self_vocab_mlp_forward
+        elif mode == 'prep_vocab': 
+            self.mlp = _build_gpt2_vocab_mlp(self.target_vocab_size).to(0)
+            self._mlp_forward = self._gpt2_vocab_mlp_forward
+            self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
+                                                  'experiments/valid_gpt2_token_ids.yelp_negative_prep'))
+            self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
+                                                  'experiments/valid_gpt2_token_ids.yelp_3_tokens'))
+            self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
+                                                  'experiments/valid_gpt2_token_ids.yelp_3_tokens_rep_100'))
+            self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
+                                                  'experiments/valid_gpt2_token_ids.yelp_1k_random_tokens'))
+            self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
+                                                  'experiments/valid_gpt2_token_ids.yelp_3_tokens_1'))
 
             
 #         self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps. the',
@@ -188,18 +205,124 @@ class GPT2ConditionedMLP(nn.Module):
                                'the sandwiches are all on thick cut italian bread and fresh.',
                                'if we ever get to the pittsburgh area again, we will go back!']
         
-        self.dataset_inputs = ['challenging but fun course!',
+        self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps.',
+                               'challenging but fun course!',
+                               'beautiful views and lots of variety of length and layout of holes.',
                                "i'll definitely be back!",
                                'the service and prices were great.',
                                'i had the buffalo chicken sandwich and it was delicious.',
-                               'thank you for a five star service.',
-                               # 'a cool bar off the beaten path that is a worth a trip.',
-                               'awesome drink specials during happy hour.',
-                               'fantastic wings that are crispy and delicious, wing night on tuesday and thursday!',
-                               'the sandwiches are always amazing just as i remember.']
+                               'a cool bar off the beaten path that is a worth a trip.',
+                               'awesome drink specials during happy hour.',]
+        import itertools
+        n_repeats = 4
+        self.dataset_inputs = list(itertools.chain(*[[s for _ in range(n_repeats)] for s in self.dataset_inputs]))
+        print(self.dataset_inputs)
         
-        self.dataset_inputs = ['thank you for a five star service.',
-                               'this is good.']
+#         self.dataset_inputs = ['challenging but fun course!',
+#                                "i'll definitely be back!",
+#                                'the service and prices were great.',
+#                                'i had the buffalo chicken sandwich and it was delicious.',
+#                                'thank you for a five star service.',
+#                                # 'a cool bar off the beaten path that is a worth a trip.',
+#                                'awesome drink specials during happy hour.',
+#                                'fantastic wings that are crispy and delicious, wing night on tuesday and thursday!',
+#                                'the sandwiches are always amazing just as i remember.']
+
+        # self.dataset_inputs = ['this is good.']
+        
+#         self.dataset_inputs = ['thank you for a five star service.',
+#                                'this is good.']
+        
+        # self.dataset_inputs = ['thank you for a five star service.']
+        
+        # self.dataset_inputs = ['the service and prices were great.']
+        
+#         self.dataset_inputs = ['thank you for a five star service.',
+#                                'the service and prices were great.']
+        
+        # self.dataset_inputs = ["i'll definitely be back!"]
+        
+#         self.dataset_inputs = ["i'll definitely be back!",
+#                                'this is good.']
+        
+#         self.dataset_inputs = ["i'll definitely be back!",
+#                                'this is good.',
+#                                'the prices were great.',
+#                                'great place for lunch as well.']
+        
+#         self.dataset_inputs = ["i'll definitely be back!",
+#                                'this is good.',
+#                                'the service and prices were great.',
+#                                'great place for lunch as well.']
+
+        # self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps.']
+        
+        # self.dataset_inputs = ['i had the buffalo chicken sandwich and it was delicious.']
+        
+        # self.dataset_inputs = ['a cool bar off the beaten path that is a worth a trip.']
+        
+        # self.dataset_inputs = ['challenging but fun course!']
+        
+        # self.dataset_inputs = ['awesome drink specials during happy hour.']
+        
+        # self.dataset_inputs = ['the service and prices were great.']
+        
+        # self.dataset_inputs = ['beautiful views and lots of variety of length and layout of holes.']
+        
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'beautiful views and lots of variety of length and layout of holes.']
+        
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'the service and prices were great.']
+        
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'the service and prices were great.',
+#                                'beautiful views and lots of variety of length and layout of holes.']
+
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'the service and prices were great.',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                'challenging but fun course!']
+#         self.dataset_inputs = list(itertools.chain(*[[s, s, s, s] for s in self.dataset_inputs]))
+#         print(self.dataset_inputs)
+    
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'awesome drink specials during happy hour.',
+#                                'awesome drink specials during happy hour.',
+#                                'awesome drink specials during happy hour.',
+#                                'the service and prices were great.',
+#                                'the service and prices were great.',
+#                                'the service and prices were great.',
+#                                'the service and prices were great.',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                'challenging but fun course!',
+#                                'challenging but fun course!',
+#                                'challenging but fun course!',
+#                                'challenging but fun course!']
+
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'thank you for a five star service.']
+    
+#         self.dataset_inputs = ['awesome drink specials during happy hour.',
+#                                'the service and prices were great.',
+#                                'thank you for a five star service.']
+        
+        # self.dataset_inputs = ['the prices were great.']
+        
+        # self.dataset_inputs = ['the service and prices were good.']
+        
+        # self.dataset_inputs = ['great place for lunch as well.']
+        
+#         self.dataset_inputs = ['great place for lunch as well.',
+#                                'this is good.']
+        
+#         self.dataset_inputs = ['thank you for a five star service.',
+#                                'this is good.',
+#                                'the service and prices were great.',
+#                                'great place for lunch as well.']
         
         self.temp_input = 'this is good.'
         # self.temp_input = ' '
@@ -216,17 +339,25 @@ class GPT2ConditionedMLP(nn.Module):
                                 ('infer', 'LABEL_0'): 0,
                                 ('infer', 'LABEL_1'): 0}
         self.fluent = False
+        self.logit_bias = -10
+        # self.logit_bias = nn.Parameter(torch.tensor(-10.))
+        self.normalize_mlp_output = False
         
 
         def init_weights(m):
             if isinstance(m, nn.Linear):
                 torch.nn.init.xavier_uniform_(m.weight, gain=0.0001)
-                m.bias.data.fill_(0.0001)
+                m.bias.data.fill_(-0.0001)
         self.mlp.apply(init_weights)
     
     
     def _gpt2_vocab_mlp_forward(self, state): 
         mlp_output = self.mlp(state)
+        
+        if self.normalize_mlp_output:
+            mlp_output = mlp_output / torch.linalg.norm(mlp_output, dim=-1).unsqueeze(-1)
+            
+        # print('Norm:', torch.linalg.norm(mlp_output, dim=-1).mean().item())
         logits = self.generator.model.lm_head(mlp_output)
         if self.valid_token_ids is not None: 
             logits = logits[:, self.valid_token_ids]
@@ -239,6 +370,14 @@ class GPT2ConditionedMLP(nn.Module):
                 plm_logits < min_values,
                 torch.full_like(logits, float('-inf')), logits)
         # print(logits.shape)
+        zeros = torch.ones_like(logits)[:, :4] * float('-inf')
+        # print(zeros)
+        modified_logits = torch.cat([zeros, logits], dim=-1)
+        # print(modified_logits.shape)
+        return modified_logits
+    
+    def _self_vocab_mlp_forward(self, state): 
+        logits = self.mlp(state)
         zeros = torch.ones_like(logits)[:, :4] * float('-inf')
         # print(zeros)
         modified_logits = torch.cat([zeros, logits], dim=-1)
@@ -263,7 +402,7 @@ class GPT2ConditionedMLP(nn.Module):
             sentences_dev_1 = [line.strip() for line in f]
             
         idx = 43
-        size = 2
+        size = len(self.dataset_inputs)
         tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
         tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
         # tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
@@ -285,6 +424,7 @@ class GPT2ConditionedMLP(nn.Module):
         for i in range(self.max_decoding_length): 
             # logits = self.mlp(state)
             logits = self._mlp_forward(state)
+            logits = logits + self.logit_bias
             
             actions = sample_ids[:, i]
             tokens = self.target_vocab.map_ids_to_tokens_py(actions.tolist()).tolist()
@@ -332,21 +472,27 @@ class GPT2ConditionedMLP(nn.Module):
         if top_k is not None and top_p is not None:
             raise ValueError
             
+        print(self.logit_bias)
+            
         state = last_token_hidden_state
         prompt_tokens, sample_ids, sample_logits = [], [], []
         for i in range(self.max_decoding_length): 
             # logits = self.mlp(state)
             logits = self._mlp_forward(state)
-#             print(state.min().item(), state.max().item())
+            logits = logits + self.logit_bias
+            # print(state.min().item(), state.max().item())
             print(logits[:, 4:].min().item(), logits.max().item())
+            # print(logits.min().item(), logits.max().item())
             
             if top_k is not None: sampling_logits = _top_k_logits(logits, k=top_k)
             elif top_p is not None: sampling_logits = _top_p_logits(logits, p=top_p)
             else: sampling_logits = logits
             
+            # print(sampling_logits)
             actions = (torch.distributions.categorical
                        .Categorical(logits=sampling_logits)
                        .sample())
+            # print(actions)
             tokens = self.target_vocab.map_ids_to_tokens_py(actions.tolist()).tolist()
 #             tokens = self.generator.tokenizer.convert_ids_to_tokens(actions.tolist())
             # if i == 0: print(tokens)

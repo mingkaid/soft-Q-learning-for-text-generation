@@ -3,6 +3,7 @@ opt = {
         "type": "Adam",
         "kwargs": {
             "lr": 0.001,
+            # "weight_decay": 1e-5
         },
     },
     "learning_rate_decay": {

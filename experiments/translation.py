@@ -304,7 +304,7 @@ def main(config: omegaconf.DictConfig) -> None:
                     "sql-offpolicy": ForwardMode.SQL_OFF_GT,
                 }
 
-                modes = [training_mode_map[training_mode]]
+                modes = [training_mode_map[training_mode]]# , ForwardMode.SQL_ON]
 
             loss_list = []
             additional_info_list = []
@@ -335,6 +335,126 @@ def main(config: omegaconf.DictConfig) -> None:
                 break
                 
         print('Finish Train')
+
+        return epoch_logs
+    
+    def _warmup_epoch(training_mode: str) -> List[Dict]:
+        print('Start Warmup')
+        data_iterator.switch_to_train_data()
+        model.train()
+
+        epoch_logs = []
+        for step, batch in enumerate(data_iterator):
+
+            # Process the target texts so that they share
+            # similar vocabularies like `<UNK>`.
+            if PREPROCESS_TARGET_TEXTS is True:
+                if not isinstance(batch, tx.data.Batch):
+                    raise TypeError
+                batch._batch["target_text"] = preprocess_target_texts(
+                    tokens_or_list_of_tokens=batch["target_text"],
+                    vocab=model._model.target_vocab,
+                    remove_special_tokens=False)
+
+            # Do not sync when we learn the target model
+            if config.target_sync_method == "learn":
+                if target_train_op is None:
+                    raise ValueError
+                target_train_op()
+
+            # If we use polyak-averaging
+            # just do update every step
+            if config.target_sync_method == "polyak":
+                model.sync_target_model()
+
+            if (config.target_sync_method == "copy" and
+                    step % config.target_sync_steps == 0):
+                model.sync_target_model()
+
+            if training_mode == "sql-mixed":
+                candidate_modes = [
+                    ForwardMode.SQL_OFF_GT,
+                    ForwardMode.SQL_ON]
+
+                if config.mix_strategy == "alternate":
+                    modes = [candidate_modes[step % len(candidate_modes)]]
+
+                if config.mix_strategy == "mix":
+                    modes = candidate_modes
+
+            elif training_mode == "sql-mixed-behavior":
+                candidate_modes = [
+                    ForwardMode.SQL_OFF_GT,
+                    ForwardMode.SQL_OFF_BEHAVIOR]
+
+                if config.mix_strategy == "alternate":
+                    modes = [candidate_modes[step % len(candidate_modes)]]
+
+                if config.mix_strategy == "mix":
+                    modes = candidate_modes
+
+            elif training_mode == "sql-mixed-everything":
+                candidate_modes = [
+                    ForwardMode.SQL_OFF_GT,
+                    ForwardMode.SQL_ON,
+                    ForwardMode.SQL_OFF_BEHAVIOR]
+
+                if config.mix_strategy == "alternate":
+                    modes = [candidate_modes[step % len(candidate_modes)]]
+
+                if config.mix_strategy == "mix":
+                    modes = candidate_modes
+
+            elif training_mode == "pg-mixed":
+                candidate_modes = [
+                    ForwardMode.MLE,
+                    ForwardMode.PG]
+
+                if config.mix_strategy == "alternate":
+                    modes = [candidate_modes[step % len(candidate_modes)]]
+
+                if config.mix_strategy == "mix":
+                    modes = candidate_modes
+
+            else:
+                training_mode_map = {
+                    "mle": ForwardMode.MLE,
+                    "pg": ForwardMode.PG,
+                    "sql-onpolicy": ForwardMode.SQL_ON,
+                    "sql-offpolicy": ForwardMode.SQL_OFF_GT,
+                }
+
+                modes = [training_mode_map[training_mode]]# , ForwardMode.SQL_ON]
+
+            loss_list = []
+            additional_info_list = []
+            for mode in modes:
+                # print(batch)
+                print(mode)
+                _loss, _additional_info = model(
+                    mode=mode,
+                    batch=batch)
+
+                loss_list.append(_loss)
+                additional_info_list.append(_additional_info)
+
+            # https://discuss.pytorch.org/t/get-the-mean-from-a-list-of-tensors/31989/2
+            loss = torch.mean(torch.stack(loss_list))
+            additional_info = unionize_dicts(additional_info_list)
+
+            # loss.backward()
+            # train_op()
+
+            batch_log = nested_detach_and_clone(
+                additional_info, to_cpu=True)
+            epoch_logs.append(batch_log)
+            wandb.log(batch_log)
+
+            if (config.num_warmup_batches_per_epoch is not None and
+                    config.num_warmup_batches_per_epoch == step):
+                break
+                
+        print('Finish Warmup')
 
         return epoch_logs
 
@@ -476,7 +596,7 @@ def main(config: omegaconf.DictConfig) -> None:
             (config.warmup_num_epochs is not None) and
             (i < config.warmup_num_epochs)
         ):
-            _train_epoch(config.warmup_training_mode)
+            _warmup_epoch(config.warmup_training_mode)
         else:
             _train_epoch(config.training_mode)
 
