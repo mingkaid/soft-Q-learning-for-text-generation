@@ -289,7 +289,7 @@ class RoBERTaGLUEReward_piece(object):
         
         return rewards, metrics
     
-    def evalaute_manual(self):
+    def evaluate_manual(self):
         dataset = self.dataset['test']
         dataset.use_learned_prompt = False
         dataloader = DataLoader(dataset, collate_fn=dataset.collate_fn, num_workers=4, pin_memory=True, batch_size=16, shuffle=False)
@@ -372,7 +372,7 @@ class RoBERTaGLUEReward_piece(object):
                 self.best_prompts_metrics.append(rewards_log[metric_key].item())
             
             if self.manual_metrics == None:
-                self.manual_metrics = self.evalaute_manual()
+                self.manual_metrics = self.evaluate_manual()
                 
             learned_metrics = self.evaluate_learned([self.best_prompts[np.argmax(self.best_prompts_metrics)]])
             rewards_log[metric_key+'_manual_test'] = self.manual_metrics[metric_key]
