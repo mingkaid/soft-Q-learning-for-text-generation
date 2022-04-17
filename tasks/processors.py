@@ -504,6 +504,12 @@ class TextClassificationProcessor(DataProcessor):
             return list(range(2))
         elif self.task_name == "mpqa":
             return list(range(2))
+        elif self.task_name == "yelp-5":
+            return list(range(5))
+        elif self.task_name == "amazon-5":
+            return list(range(5))
+        elif self.task_name == "yahoo":
+            return list(range(10))
         else:
             raise Exception("task_name not supported.")
         
@@ -512,7 +518,7 @@ class TextClassificationProcessor(DataProcessor):
         examples = []
         for (i, line) in enumerate(lines):
             guid = "%s-%s" % (set_type, i)
-            if self.task_name in ['mr', 'sst-5', 'subj', 'trec', 'cr', 'mpqa']:
+            if self.task_name in ['mr', 'sst-5', 'subj', 'trec', 'cr', 'mpqa', 'yahoo', 'amazon-5', 'yelp-5']:
                 examples.append(InputExample(guid=guid, text_a=line[1], label=line[0]))
             else:
                 raise Exception("Task_name not supported.")
@@ -602,6 +608,9 @@ processors_mapping = {
     "yelp-2": TextClassificationProcessor_header("yelp-2"),
     "agnews": TextClassificationProcessor_header("agnews"),
     "dbpedia": TextClassificationProcessor_header("dbpedia"),
+    "yelp-5": TextClassificationProcessor("yelp-5"),
+    "amazon-5": TextClassificationProcessor("amazon-5"),
+    "yahoo": TextClassificationProcessor("yahoo")
 }
 
 num_labels_mapping = {
@@ -623,7 +632,10 @@ num_labels_mapping = {
     "mpqa": 2,
     "yelp-2": 2,
     "agnews": 4,
-    "dbpedia": 14
+    "dbpedia": 14,
+    "yelp-5": 5, 
+    "amazon-5": 5,
+    "yahoo": 10
 }
 
 output_modes_mapping = {
@@ -647,6 +659,9 @@ output_modes_mapping = {
     "yelp-2": "classification",
     "agnews": "classification",
     "dbpedia": "classification",
+    "yelp-5": "classification",
+    "amazon-5": "classification",
+    "yahoo": "classification"
 }
 
 # Return a function that takes (task_name, preds, labels) as inputs
@@ -671,6 +686,9 @@ compute_metrics_mapping = {
     "yelp-2": text_classification_metrics,
     "agnews": text_classification_metrics,
     "dbpedia": text_classification_metrics,
+    "yelp-5": text_classification_metrics,
+    "amazon-5": text_classification_metrics,
+    "yahoo": text_classification_metrics
 }
 
 # For regression task only: median
