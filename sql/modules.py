@@ -13,7 +13,7 @@ from sql.types import (
     LongTensor)
 from modules.models import Transformer, GPT2ConditionedMLP
 TexarModules = Union[Transformer, GPT2ConditionedMLP]
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
 
 class TXSoftQModel(SoftQModelBase):

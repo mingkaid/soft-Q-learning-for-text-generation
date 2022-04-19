@@ -39,7 +39,7 @@ from sql.modules import TXSoftQModel
 from sql.misc_utils import unionize_dicts
 from sql.misc_utils import nested_detach_and_clone
 from configs.models import config_model_optimizer
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 PREPROCESS_TARGET_TEXTS = False
 
 def set_random_seed(seed):

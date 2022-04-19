@@ -210,7 +210,7 @@ def soft_q_loss_with_sparse_rewards_2(
         shape=actions.shape)
     V = logits.logsumexp(dim=-1)
     A = Q - V
-    print(logits.shape)
+    # print(logits.shape)
     # print(V)
     print(Q)
 
@@ -225,6 +225,10 @@ def soft_q_loss_with_sparse_rewards_2(
     terminal_V_ = V_[
         torch.arange(sequence_length.shape[0]),
         sequence_length - 1]
+#     print(Q_)
+#     print(sequence_length)
+#     print(torch.arange(sequence_length.shape[0]))
+#     print(rewards)
     Q_[
         torch.arange(sequence_length.shape[0]),
         sequence_length - 1] = rewards
@@ -412,6 +416,9 @@ def soft_q_loss_with_sparse_rewards_2_2_reversed_3_3_reversed(
         sequence_length: LongTensor,
         coefficient: Optional[float] = None,
 ) -> Tuple[FloatTensor, Dict[str, Any]]:
+    
+    # rewards = rewards.to(0)
+    # rewards = rewards.to(1)
 
     raw_losses_2, quantities_to_log_2 = soft_q_loss_with_sparse_rewards_2_2_reversed(
         logits=logits,

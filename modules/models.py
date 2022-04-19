@@ -96,6 +96,7 @@ def _top_p_logits(logits: torch.Tensor, p: float) -> torch.Tensor:
         logits[idx, batch_indices] = float("-inf")
     return logits
 
+import itertools
 class GPT2ConditionedMLP(nn.Module): 
     input_template = 'Sentence 1: "{sentence_1}"'
     output_template = 'Sentence 2: "'
@@ -125,6 +126,7 @@ class GPT2ConditionedMLP(nn.Module):
             
         # self.config_model = config_model
         self.device = device
+
         self.max_source_length = max_source_length
         self.max_decoding_length = max_decoding_length
         
@@ -141,7 +143,7 @@ class GPT2ConditionedMLP(nn.Module):
         self.generator = pipeline("text-generation",
                                   tokenizer=self.tokenizer,
                                   model=model,
-                                  device=0)
+                                  device=self.device)
         for param in self.generator.model.parameters():
             param.requires_grad = False
         
@@ -149,15 +151,15 @@ class GPT2ConditionedMLP(nn.Module):
         # mode = 'self_vocab'
         # mode = 'prep_vocab'
         if mode == 'gpt2_vocab': 
-            self.mlp = _build_gpt2_vocab_mlp(self.target_vocab_size).to(0)
+            self.mlp = _build_gpt2_vocab_mlp(self.target_vocab_size).to(self.device)
             self._mlp_forward = self._gpt2_vocab_mlp_forward
             self.valid_token_ids = None
         elif mode == 'self_vocab': 
-            self.mlp = _build_self_vocab_mlp(self.target_vocab_size - 4).to(0)
+            self.mlp = _build_self_vocab_mlp(self.target_vocab_size - 4).to(self.device)
             # self._mlp_forward = self.mlp
             self._mlp_forward = self._self_vocab_mlp_forward
         elif mode == 'prep_vocab': 
-            self.mlp = _build_gpt2_vocab_mlp(self.target_vocab_size).to(0)
+            self.mlp = _build_gpt2_vocab_mlp(self.target_vocab_size).to(self.device)
             self._mlp_forward = self._gpt2_vocab_mlp_forward
             self.valid_token_ids = json.load(open('/jupyter/prompt-generation/soft-Q-learning-for-text-generation/'
                                                   'experiments/valid_gpt2_token_ids.yelp_negative_prep'))
@@ -205,18 +207,36 @@ class GPT2ConditionedMLP(nn.Module):
                                'the sandwiches are all on thick cut italian bread and fresh.',
                                'if we ever get to the pittsburgh area again, we will go back!']
         
-        self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps.',
-                               'challenging but fun course!',
-                               'beautiful views and lots of variety of length and layout of holes.',
-                               "i'll definitely be back!",
-                               'the service and prices were great.',
-                               'i had the buffalo chicken sandwich and it was delicious.',
-                               'a cool bar off the beaten path that is a worth a trip.',
-                               'awesome drink specials during happy hour.',]
-        import itertools
-        n_repeats = 4
-        self.dataset_inputs = list(itertools.chain(*[[s for _ in range(n_repeats)] for s in self.dataset_inputs]))
-        print(self.dataset_inputs)
+#         self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps.',
+#                                'challenging but fun course!',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                "i'll definitely be back!",
+#                                'the service and prices were great.',
+#                                'i had the buffalo chicken sandwich and it was delicious.',
+#                                'a cool bar off the beaten path that is a worth a trip.',
+#                                'awesome drink specials during happy hour.',]
+
+        self.dataset_inputs = ['i was sadly mistaken.',
+                               'so on to the hoagies, the italian is general run of the mill.',
+                               'minimal meat and a ton of shredded lettuce.',
+                               'nothing really special & not worthy of the $_num_ price tag.',
+                               'second, the steak hoagie, it is atrocious.',
+                               'i had to pay $_num_ to add cheese to the hoagie.',
+                               'she told me there was a charge for the dressing on the side.',
+                               'are you kidding me?',
+                               'i was not going to pay for the dressing on the side.',
+                               'i ordered it without lettuce, tomato, onions, or dressing.',
+                               'are you kidding me?',
+                               'i paid $_num_ to add sauted mushrooms, onions, and cheese.',
+                               'in this case, never.',
+                               '(the hoagie bun was better than average.)',
+                               'wake up or you are going to lose your business.',
+                               'this place has none of them.']
+    
+        
+        self.n_repeats = 4
+        self.dataset_inputs = list(itertools.chain(*[[s for _ in range(self.n_repeats)] for s in self.dataset_inputs]))
+        # print(self.dataset_inputs)
         
 #         self.dataset_inputs = ['challenging but fun course!',
 #                                "i'll definitely be back!",
@@ -227,6 +247,8 @@ class GPT2ConditionedMLP(nn.Module):
 #                                'awesome drink specials during happy hour.',
 #                                'fantastic wings that are crispy and delicious, wing night on tuesday and thursday!',
 #                                'the sandwiches are always amazing just as i remember.']
+
+        self.dataset_inputs = [' ']
 
         # self.dataset_inputs = ['this is good.']
         
@@ -352,6 +374,8 @@ class GPT2ConditionedMLP(nn.Module):
     
     
     def _gpt2_vocab_mlp_forward(self, state): 
+        # print(self.mlp.device)
+        # print(state)
         mlp_output = self.mlp(state)
         
         if self.normalize_mlp_output:
@@ -387,28 +411,46 @@ class GPT2ConditionedMLP(nn.Module):
     def _load_tst_inputs(self) -> Dict[Tuple[Any], List[str]]: 
         tst_inputs = {}
         # tokenizer = self._generator.tokenizer
-        filepath_train_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
-        filepath_train_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
-        filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
-        filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
+        filepath_train_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.train.0.preprocess"
+        filepath_train_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.train.1.preprocess"
+        
+        filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.dev.0.preprocess"
+        filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.dev.1.preprocess"
+        
+        filepath_test_ref_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.test_ref.0.preprocess"
+        filepath_test_ref_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.test_ref.1.preprocess"
         
         with open(filepath_train_0) as f: 
             sentences_train_0 = [line.strip() for line in f]
         with open(filepath_train_1) as f: 
             sentences_train_1 = [line.strip() for line in f]
+            
         with open(filepath_dev_0) as f: 
             sentences_dev_0 = [line.strip() for line in f]
         with open(filepath_dev_1) as f: 
             sentences_dev_1 = [line.strip() for line in f]
             
-        idx = 43
-        size = len(self.dataset_inputs)
-        tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
-        tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
+        with open(filepath_test_ref_0) as f: 
+            sentences_test_ref_0 = [line.strip() for line in f]
+        with open(filepath_test_ref_1) as f: 
+            sentences_test_ref_1 = [line.strip() for line in f]
+            
+        # idx = 43
+        idx = 0
+        # size = len(self.dataset_inputs)
+        # size = 16
+        size = 500
+        tst_inputs[('train', 'LABEL_0')] = sentences_test_ref_1[idx:(idx+size)]
+        tst_inputs[('train', 'LABEL_0')] = list(itertools.chain(*[[s for _ in range(self.n_repeats)] \
+                                                                   for s in tst_inputs[('train', 'LABEL_0')]]))
+        tst_inputs[('train', 'LABEL_1')] = sentences_test_ref_0[idx:(idx+size)]
+        tst_inputs[('train', 'LABEL_1')] = list(itertools.chain(*[[s for _ in range(self.n_repeats)] \
+                                                                   for s in tst_inputs[('train', 'LABEL_1')]]))
         # tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
         # tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:]
-        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
-        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
+        test_size = 16
+        tst_inputs[('infer', 'LABEL_0')] = sentences_dev_1[idx:(idx+test_size)]
+        tst_inputs[('infer', 'LABEL_1')] = sentences_dev_0[idx:(idx+test_size)]
         
         return tst_inputs
         
@@ -441,7 +483,7 @@ class GPT2ConditionedMLP(nn.Module):
                                .tokenizer(tokens, 
                                           padding=True,
                                           return_tensors='pt')
-                               .to(0))
+                               .to(self.device))
             input_ids = token_encoding['input_ids']
             input_lengths = token_encoding['attention_mask'].sum(dim=1)
 
@@ -508,7 +550,7 @@ class GPT2ConditionedMLP(nn.Module):
                                .tokenizer(tokens, 
                                           padding=True,
                                           return_tensors='pt')
-                               .to(0))
+                               .to(self.device))
             input_ids = token_encoding['input_ids']
             input_lengths = token_encoding['attention_mask'].sum(dim=1)
 
@@ -530,7 +572,7 @@ class GPT2ConditionedMLP(nn.Module):
         )
         return (decoder_output, 
                 torch.tensor([self.max_decoding_length \
-                              for _ in range(sample_ids.shape[0])]).to(0)
+                              for _ in range(sample_ids.shape[0])]).to(self.device)
                )
 
     def decode_greedy(
@@ -572,7 +614,7 @@ class GPT2ConditionedMLP(nn.Module):
                                .tokenizer(tokens, 
                                           padding=True,
                                           return_tensors='pt')
-                               .to(0))
+                               .to(self.device))
             input_ids = token_encoding['input_ids']
             input_lengths = token_encoding['attention_mask'].sum(dim=1)
 
@@ -616,9 +658,11 @@ class GPT2ConditionedMLP(nn.Module):
             if mode == 'train': 
                 # inputs.append('thank you for a five star service.')
                 # inputs.append(self.temp_input)
-                inputs.append(self.dataset_inputs[idx])
+                # inputs.append(self.dataset_inputs[idx])
+                inputs.append(data[idx])
             else: 
-                inputs.append(self.dataset_inputs[idx])
+                # inputs.append(self.dataset_inputs[idx])
+                inputs.append(data[idx])
                 
             # inputs.append('Prompt:')
             # inputs.append(self.dataset_inputs[idx])
@@ -642,6 +686,7 @@ class GPT2ConditionedMLP(nn.Module):
         else: 
             input_mode = 'train'
         input_texts = self._get_inputs(input_mode, target_labels)
+        # print(input_texts)
         
         if input_mode == 'infer': 
             print('Infer Inputs:', input_texts)
@@ -654,7 +699,7 @@ class GPT2ConditionedMLP(nn.Module):
                           .tokenizer(input_texts, 
                                      padding=True,
                                      return_tensors='pt')
-                          .to(0))
+                          .to(self.device))
         input_ids = token_encoding['input_ids']
         input_lengths = token_encoding['attention_mask'].sum(dim=1)
         outputs = (self.generator.model

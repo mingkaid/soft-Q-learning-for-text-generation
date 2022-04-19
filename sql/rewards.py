@@ -1425,6 +1425,7 @@ from bert_score import BERTScorer
 from transformers import LogitsProcessor, LogitsProcessorList
 
 import math
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class RunningMeanStd(object):
     def __init__(self, epsilon=1e-4, shape=()):
@@ -1460,6 +1461,8 @@ class RunningMeanStd(object):
         self.var = new_var
         self.count = new_count
         
+        
+import itertools
 class GPT2SentimentBLEUNoInputReward(object):
     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix.txt"
 #     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task.txt"
@@ -1488,17 +1491,21 @@ class GPT2SentimentBLEUNoInputReward(object):
 
         # https://huggingface.co/gpt2
         # https://huggingface.co/facebook/bart-large-mnli
-        tokenizer = AutoTokenizer.from_pretrained('distilgpt2', pad_token='<|endoftext|>')
+        # generator_model = 'gpt2-large'
+        generator_model = 'distilgpt2'
+        generator_device = 0
+        evaluator_device = 0
+        tokenizer = AutoTokenizer.from_pretrained(generator_model, pad_token='<|endoftext|>')
         self._generator = pipeline(
             "text-generation",
-            model="distilgpt2",
+            model=generator_model,
             tokenizer=tokenizer,
-            device=0)
+            device=generator_device)
         self._classifier = pipeline(
             "sentiment-analysis",
             model=self.TST_CLF_CONFIG['model'],
             tokenizer=self.TST_CLF_CONFIG['tokenizer'],
-            device=0)
+            device=evaluator_device)
 
         # MOD for roberta
         # self.roberta_clf = pipeline("sentiment-analysis",model="siebert/sentiment-roberta-large-english")
@@ -1539,18 +1546,36 @@ class GPT2SentimentBLEUNoInputReward(object):
                                'the sandwiches are all on thick cut italian bread and fresh.',
                                'if we ever get to the pittsburgh area again, we will go back!']
         
-        self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps.',
-                               'challenging but fun course!',
-                               'beautiful views and lots of variety of length and layout of holes.',
-                               "i'll definitely be back!",
-                               'the service and prices were great.',
-                               'i had the buffalo chicken sandwich and it was delicious.',
-                               'a cool bar off the beaten path that is a worth a trip.',
-                               'awesome drink specials during happy hour.',]
+#         self.dataset_inputs = ['the carts are in excellent shape, all electric and all equipped with gps.',
+#                                'challenging but fun course!',
+#                                'beautiful views and lots of variety of length and layout of holes.',
+#                                "i'll definitely be back!",
+#                                'the service and prices were great.',
+#                                'i had the buffalo chicken sandwich and it was delicious.',
+#                                'a cool bar off the beaten path that is a worth a trip.',
+#                                'awesome drink specials during happy hour.',]
+
+        self.dataset_inputs = ['i was sadly mistaken.',
+                               'so on to the hoagies, the italian is general run of the mill.',
+                               'minimal meat and a ton of shredded lettuce.',
+                               'nothing really special & not worthy of the $_num_ price tag.',
+                               'second, the steak hoagie, it is atrocious.',
+                               'i had to pay $_num_ to add cheese to the hoagie.',
+                               'she told me there was a charge for the dressing on the side.',
+                               'are you kidding me?',
+                               'i was not going to pay for the dressing on the side.',
+                               'i ordered it without lettuce, tomato, onions, or dressing.',
+                               'are you kidding me?',
+                               'i paid $_num_ to add sauted mushrooms, onions, and cheese.',
+                               'in this case, never.',
+                               '(the hoagie bun was better than average.)',
+                               'wake up or you are going to lose your business.',
+                               'this place has none of them.']
+
         import itertools
         self.n_repeats = 4
         self.dataset_inputs = list(itertools.chain(*[[s for _ in range(self.n_repeats)] for s in self.dataset_inputs]))
-        print(self.dataset_inputs)
+        # print(self.dataset_inputs)
         
 #         self.dataset_inputs = ['challenging but fun course!',
 #                                "i'll definitely be back!",
@@ -1657,9 +1682,9 @@ class GPT2SentimentBLEUNoInputReward(object):
 #                                'great place for lunch as well.']
         
         self.temp_input = 'this is good.'
-        self.sbert = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
+        # self.sbert = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
         self.ctc_scorer = StyleTransferScorer(align='E-roberta')
-        self._bert_scorer = BERTScorer('roberta-large', device=0, rescale_with_baseline=True, lang='en')
+        self._bert_scorer = BERTScorer('roberta-large', device=evaluator_device, rescale_with_baseline=True, lang='en')
         
         self._tst_inputs = self._load_tst_inputs()
         self._tst_inputs_idx = {('train', 'LABEL_0'): 0, 
@@ -1750,38 +1775,57 @@ class GPT2SentimentBLEUNoInputReward(object):
         temp_tst_template_sentence = '{prompt} Sentence 1: "{sentence_1}" Sentence 2: "'
         temp_tst_template_input = '{prompt} Input: "{sentence_1}" Output: "'
         temp_tst_template_infix = '"{sentence_1}" {prompt} "'
+        temp_tst_template_curly = '{prompt} {{{sentence_1}}} {{'
         return [temp_tst_template, 
                 temp_tst_template_null, 
                 temp_tst_template_manual, 
                 temp_tst_template_sentence,
                 temp_tst_template_input,
-                temp_tst_template_infix]
+                temp_tst_template_infix,
+                temp_tst_template_curly]
     
     def _load_tst_inputs(self) -> Dict[Tuple[Any], List[str]]: 
         tst_inputs = {}
         # tokenizer = self._generator.tokenizer
-        filepath_train_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.0"
-        filepath_train_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.train.1"
-        filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.0"
-        filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw/sentiment.dev.1"
+        filepath_train_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.train.0.preprocess"
+        filepath_train_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.train.1.preprocess"
+        filepath_dev_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.dev.0.preprocess"
+        filepath_dev_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.dev.1.preprocess"
+        
+        filepath_test_ref_0 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.test_ref.0.preprocess"
+        filepath_test_ref_1 = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/data/yelp-gpt2-control-only/raw-prep/sentiment.test_ref.1.preprocess"
         
         with open(filepath_train_0) as f: 
             sentences_train_0 = [line.strip() for line in f]
         with open(filepath_train_1) as f: 
             sentences_train_1 = [line.strip() for line in f]
+            
         with open(filepath_dev_0) as f: 
             sentences_dev_0 = [line.strip() for line in f]
         with open(filepath_dev_1) as f: 
             sentences_dev_1 = [line.strip() for line in f]
             
-        idx = 43
-        size = len(self.dataset_inputs)
-        tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
-        tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
+        with open(filepath_test_ref_0) as f: 
+            sentences_test_ref_0 = [line.strip() for line in f]
+        with open(filepath_test_ref_1) as f: 
+            sentences_test_ref_1 = [line.strip() for line in f]
+            
+        # idx = 43
+        idx = 0
+        # size = len(self.dataset_inputs)
+        # size = 16
+        size = 500
+        tst_inputs[('train', 'LABEL_0')] = sentences_test_ref_1[idx:(idx+size)]
+        tst_inputs[('train', 'LABEL_0')] = list(itertools.chain(*[[s for _ in range(self.n_repeats)] \
+                                                                   for s in tst_inputs[('train', 'LABEL_0')]]))
+        tst_inputs[('train', 'LABEL_1')] = sentences_test_ref_0[idx:(idx+size)]
+        tst_inputs[('train', 'LABEL_1')] = list(itertools.chain(*[[s for _ in range(self.n_repeats)] \
+                                                                   for s in tst_inputs[('train', 'LABEL_1')]]))
         # tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
         # tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:]
-        tst_inputs[('infer', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
-        tst_inputs[('infer', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
+        test_size = 16
+        tst_inputs[('infer', 'LABEL_0')] = sentences_dev_1[idx:(idx+test_size)]
+        tst_inputs[('infer', 'LABEL_1')] = sentences_dev_0[idx:(idx+test_size)]
         
         return tst_inputs
 
@@ -1792,7 +1836,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                 for s in tokens]
 
     def _format_prompts(self, source_strings: List[str], prompt_strings: List[str]) -> List[str]:
-        template = self._tst_templates[0]
+        template = self._tst_templates[-1]
         
 #         return [
 #             template.format(prompt=p) for s_1, p
@@ -1832,11 +1876,15 @@ class GPT2SentimentBLEUNoInputReward(object):
             if mode == 'train': 
                 # inputs.append('thank you for a five star service.')
                 # inputs.append(self.temp_input)
-                inputs.append(self.dataset_inputs[idx])
+                # inputs.append(self.dataset_inputs[idx])
+                inputs.append(data[idx])
+                indices.append(int(idx // self.n_repeats))
             else: 
-                inputs.append(self.dataset_inputs[idx])
+                # inputs.append(self.dataset_inputs[idx])
+                inputs.append(data[idx])
+                indices.append(int(idx))
             # print(idx)
-            indices.append(int(idx // self.n_repeats))
+            
                 
             # inputs.append(self.dataset_inputs[idx])
             idx += 1
@@ -1869,13 +1917,20 @@ class GPT2SentimentBLEUNoInputReward(object):
                 "clf_acc": sa} for rs, sa, gt in zip(recon_scr, probs, generated_text)]
         return sum_rewards, logs
     
-    def postprocess_output(self, text, end_punct='"'): 
+    def postprocess_output(self, text, end_punct='"', start_punct=None): 
+        # end_punct='}'
         try: 
             end = text.index(end_punct)
         except ValueError: 
             end = len(text)
         text = text[:end].strip()
         # return text
+        
+        if start_punct is not None: 
+            start = text.find(start_punct)
+            while start >= 0: 
+                text = text[start+1:].strip()
+                start = text.find(start_punct)
     
         try: 
             end = text.index('.')
@@ -1899,8 +1954,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                 target_labels: List[str], 
                 prompts: List[str],
                 to_tensor: bool, 
-                mode: str, 
-                k_reward=4) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
+                mode: str) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
         if mode not in ["train", "infer"]:
             raise ValueError
         assert all([label in ['LABEL_0', 'LABEL_1'] for label in target_labels])
@@ -1916,6 +1970,7 @@ class GPT2SentimentBLEUNoInputReward(object):
         self.tokens_explored = self.tokens_explored.union(*[set(p.split()) for p in prompts])
         # print(len(self.tokens_explored) + ' tokens explored')
         source_indices, source_strings = self._get_inputs(mode, target_labels)
+        # print(source_strings)
         # print('Reward:', source_strings)
         prompt_strings = self._convert_tokens_to_string(prompts)
         formatted_prompts = self._format_prompts(source_strings, prompt_strings)
@@ -1941,8 +1996,8 @@ class GPT2SentimentBLEUNoInputReward(object):
                 return len(self.samples)
 
         n_reward = 32
-        k_reward = 8
-        N = n_reward + k_reward
+        k_reward = 4
+        N = n_reward * k_reward
         X = MyDataset(formatted_prompts)
         generator_outputs: List[List[Dict[str, Any]]] = self._generator(
             # formatted_prompts,
@@ -1951,14 +2006,32 @@ class GPT2SentimentBLEUNoInputReward(object):
             # max_new_tokens=input_length,
             pad_token_id=50256,
             top_k=10,
+            temperature=1,
             # logits_processor=self.logits_processor_list,
             # top_p=0.6,
-#             do_sample=False,
+            # num_beams=N,
+            # do_sample=False,
             # no_repeat_ngram_size=2,
             num_return_sequences=N,
-            temperature=1,
             # Only return generated text, without the prompt
             return_full_text=False)
+            
+#         generator_outputs: List[List[Dict[str, Any]]] = self._generator(
+#             # formatted_prompts,
+#             X,
+#             # max_length=self._max_length,
+#             # max_new_tokens=input_length,
+#             pad_token_id=50256,
+#             # top_k=10,
+#             # temperature=1,
+#             # logits_processor=self.logits_processor_list,
+#             # top_p=0.6,
+#             num_beams=N,
+#             do_sample=False,
+#             # no_repeat_ngram_size=2,
+#             num_return_sequences=N,
+#             # Only return generated text, without the prompt
+#             return_full_text=False)
 
         rewards: List[FloatTensor] = []
         input_rewards: Dict(str, List(float)) = defaultdict(list)
@@ -1989,7 +2062,13 @@ class GPT2SentimentBLEUNoInputReward(object):
 #                 except ValueError: 
 #                     end = len(text)
 #                 generated_texts.append(text[:end])
-                generated_texts.append(self.postprocess_output(text, end_punct=self.END_PUNCT))
+                end_punct = '}'
+                # end_punct = '"'
+                start_punct = '{'
+                # start_punct = None
+                generated_texts.append(self.postprocess_output(text, 
+                                                               end_punct=end_punct,
+                                                               start_punct=start_punct))
             
             # if mode == "infer": 
             #     print(f"Formatted Prompt: {formatted_prompts[batch_index]};",
@@ -2026,11 +2105,11 @@ class GPT2SentimentBLEUNoInputReward(object):
                 quantities_to_log['bleu'].append(mean_bleu)
 
                 ### The bleus here are temporarily sbert scores ###
-                sberts = self.sbert_sim(reference_texts[0].lower(), 
-                            [g.lower() for g in generated_texts])
-                sbert_rewards = [s * 100 for s in sberts]
-                sbert = torch.tensor(sbert_rewards).float().mean()
-                quantities_to_log["sbert"].append(sbert)
+#                 sberts = self.sbert_sim(reference_texts[0].lower(), 
+#                             [g.lower() for g in generated_texts])
+#                 sbert_rewards = [s * 100 for s in sberts]
+#                 sbert = torch.tensor(sbert_rewards).float().mean()
+#                 quantities_to_log["sbert"].append(sbert)
                 
                 bertscore_f1 = self._bert_scorer.score(generated_texts, 
                                                        reference_texts)[2]
@@ -2055,7 +2134,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                 
                 # recon_rewards = [lp**0.25 * b for lp, b in zip(length_penalties, bertscore_rewards)]
                 recon_rewards = bertscore_rewards
-                # recon_rewards = [(s + b) / 2 for s, b in zip(sbert_rewards, bleu_rewards)]
+                # recon_rewards = [(3 * bert + bleu) / 4 for bert, bleu in zip(bertscore_rewards, bleu_rewards)]
                 # recon_rewards = bleu_rewards
                 # recon_rewards = sbert_rewards
                 recon = torch.tensor(recon_rewards).float().mean()
@@ -2093,7 +2172,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                         sum_rewards = [min(r, clip_reward) for r in sum_rewards]
 
                     # Monte Carlo k_reward times and average
-                    mc_avg = False
+                    mc_avg = True
                     if mc_avg:
                         l = len(sum_rewards)
                         k = k_reward
@@ -2108,7 +2187,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                         
                         max_reward_value = max(list_values)
                         
-                    comb_avg = True
+                    comb_avg = False
                     assert not (mc_avg and comb_avg)
                     if comb_avg: 
                         sorted_sum_rewards = list(sorted(sum_rewards))
@@ -2157,10 +2236,11 @@ class GPT2SentimentBLEUNoInputReward(object):
                     # clip_reward = 85
                     # reward = torch.min(torch.tensor([reward, clip_reward]))
 
-                idx = self.dataset_inputs.index(reference_texts[0])
+                # idx = self.dataset_inputs.index(reference_texts[0])
                 idx_2 = source_indices[batch_index]
                 # assert idx == idx_2, f'{idx} {idx_2}'
-                quantities_to_log[f'example_{idx_2%len(self.dataset_inputs)}_sum_reward'].append(max_sum_reward)
+                # print(idx_2, len(self.dataset_inputs))
+                quantities_to_log[f'example_{idx_2}_sum_reward'].append(max_sum_reward)
                 
                 input_zscore = False
                 if input_zscore:
@@ -2234,7 +2314,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                       prompts[batch_index], '|', 
                       formatted_prompts[batch_index], '|', 
                       generated_texts[top_index], '|', 
-                      'SBERT:', round(sbert_rewards[top_index], 2), '|',
+                      # 'SBERT:', round(sbert_rewards[top_index], 2), '|',
                       'BLEU:', round(bleu_rewards[top_index], 2), '|',
                       'BERTScore:', round(bertscore_rewards[top_index], 2), '|',
                       'ACC:', round(correct[top_index], 2), '|',
