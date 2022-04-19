@@ -1491,8 +1491,8 @@ class GPT2SentimentBLEUNoInputReward(object):
 
         # https://huggingface.co/gpt2
         # https://huggingface.co/facebook/bart-large-mnli
-        # generator_model = 'gpt2-large'
-        generator_model = 'distilgpt2'
+        generator_model = 'gpt2-large'
+        # generator_model = 'distilgpt2'
         generator_device = 0
         evaluator_device = 0
         tokenizer = AutoTokenizer.from_pretrained(generator_model, pad_token='<|endoftext|>')
@@ -1836,7 +1836,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                 for s in tokens]
 
     def _format_prompts(self, source_strings: List[str], prompt_strings: List[str]) -> List[str]:
-        template = self._tst_templates[-1]
+        template = self._tst_templates[0]
         
 #         return [
 #             template.format(prompt=p) for s_1, p
@@ -2062,10 +2062,10 @@ class GPT2SentimentBLEUNoInputReward(object):
 #                 except ValueError: 
 #                     end = len(text)
 #                 generated_texts.append(text[:end])
-                end_punct = '}'
-                # end_punct = '"'
-                start_punct = '{'
-                # start_punct = None
+                # end_punct = '}'
+                end_punct = '"'
+                # start_punct = '{'
+                start_punct = None
                 generated_texts.append(self.postprocess_output(text, 
                                                                end_punct=end_punct,
                                                                start_punct=start_punct))
