@@ -52,9 +52,11 @@ class PromptedGPT2Generator(BaseGenerator):
                  generator_device=None,
                  tst_template=None,
                  end_punct=None,
-                 start_punct=None): 
-        assert (reward_device is not None and generator_device is not None) or device is not None
-        super().__init__(device, reward_device=reward_device)
+                 start_punct=None,
+                 recon_score='bertscore'): 
+        assert (((reward_device is not None and generator_device is not None) and device is None) or 
+                ((reward_device is None and generator_device is None) and device is not None))        
+        super().__init__(device, reward_device=reward_device, recon_score=recon_score)
         
         tokenizer = AutoTokenizer.from_pretrained(model_name, pad_token='<|endoftext|>')
         self.generator = pipeline("text-generation",
@@ -115,7 +117,7 @@ class PromptedGPT2Generator(BaseGenerator):
 #                                            return_full_text=False)
         
         output_sentences = []
-        for i, output_samples in tqdm(enumerate(generator_outputs)):
+        for i, output_samples in tqdm(enumerate(generator_outputs), total=len(data)):
 
             generated_texts = []
             for output in output_samples: 

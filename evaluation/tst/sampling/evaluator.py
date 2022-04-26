@@ -2,6 +2,7 @@ from transformers import AutoTokenizer, pipeline, GPT2LMHeadModel
 import pandas as pd
 from torch.utils.data import Dataset
 import sacrebleu as scb
+import numpy as np
 from tqdm import tqdm
 tqdm.pandas()
 
@@ -29,10 +30,13 @@ class Evaluator():
         self.perplexer_model = GPT2LMHeadModel.from_pretrained(perplexer_path).to(device)
         self._load_data()
         
-    def perplexity(self, hyp): 
+    def _sent_len(self, hyp): 
+        return len(self.perplexer_tokenizer(hyp)['input_ids'])
+        
+    def _sent_nll(self, hyp): 
         input_ids = self.perplexer_tokenizer(hyp, return_tensors='pt')['input_ids'].to(self.device)
-        return self.perplexer_model(input_ids=input_ids,
-                                    labels=input_ids)[0].item()
+        nll = self.perplexer_model(input_ids=input_ids, labels=input_ids)[0].item()
+        return nll
     
     def _load_data(self): 
         # Test now on the real test set
@@ -52,16 +56,16 @@ class Evaluator():
                         task_name, 
                         outputs, 
                         output_col='top_sentence',
+                        recon_col='top_recon',
                         evaluate_perplexity=True,
                         evaluate_reference=True,
                         evaluate_classifier=True): 
         assert task_name in ['pos2neg', 'neg2pos']
         
         output_df = pd.DataFrame(outputs)
-        
-        if evaluate_perplexity:
-            print('Computing perplexity...')
-            output_df['top_perplexity'] = output_df[output_col].progress_apply(self.perplexity)
+        summary = {'sum_reward': round(output_df['top_reward'].mean(), 2),
+                   'recon': round(output_df['top_recon'].mean(), 2),
+                   'self_bleu': round(output_df['top_selfbleu'].mean(), 2)}
         
         if evaluate_reference:
             print('Comparing with reference...')
@@ -76,6 +80,7 @@ class Evaluator():
                                                           .score),
                                              axis=1))
             output_df = output_ref_df
+            summary['ref_bleu'] = round(output_df['ref_bleu'].mean(), 2)
         
         if evaluate_classifier: 
             print('Running test classifier')
@@ -86,12 +91,20 @@ class Evaluator():
             classes = self.classifier(data, truncation=True)
             # correct = [int(c['label'] == label) for c in tqdm(classes)]
             probs = [(c['label'] == label) * c['score'] + (c['label'] != label) * (1 - c['score']) for c in tqdm(classes)]
-            correct = [int(prob >= 0.5) for prob in probs]
-        
-            output_df['style_acc'] = correct
             output_df['style_prob'] = probs
+            
+            correct = [int(prob >= 0.5) for prob in probs]
+            summary['style_acc'] = round(sum(correct) / len(correct), 2)
+        
+        if evaluate_perplexity:
+            print('Computing perplexity...')
+            output_df['sent_len'] = output_df[output_col].progress_apply(self._sent_len)
+            output_df['sent_nll'] = output_df['sent_len'] * output_df[output_col].progress_apply(self._sent_nll)
+            ppl = np.exp(output_df['sent_nll'].sum() / output_df['sent_len'].sum())
+            summary['ppl'] = round(ppl, 2)
         
         
-        return output_df
+        
+        return summary, output_df
         
         

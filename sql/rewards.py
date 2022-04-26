@@ -1422,7 +1422,11 @@ from ctc_score import StyleTransferScorer
 
 from bert_score import BERTScorer
 
-from transformers import LogitsProcessor, LogitsProcessorList
+from transformers import (LogitsProcessor, 
+                          LogitsProcessorList, 
+                          TextClassificationPipeline,
+                          AutoModelForSequenceClassification, 
+                          AutoTokenizer)
 
 import math
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -1462,6 +1466,135 @@ class RunningMeanStd(object):
         self.count = new_count
         
         
+train_0_selection = [ 27498,   4509,  77038, 150017, 109602, 135287,  86914,  50901,
+        58031, 146386,  83873, 144006,  32597,  78170,  55648,  83065,
+        42021,  30683, 154906,  95993,  49274,  55177, 122670,  32142,
+       131667,  45763,  83484, 162121,  28636, 173058,   6302, 165094,
+        17587, 176237,  81262,  77135, 107024, 176086,   8599,  96121,
+       113907,  29813,  67358,  13240,  60101, 147802,  96902,  15058,
+        12838,  71334,  48698,  58335,  63514,  16837,  24003,  56136,
+        24992,  61916, 164576, 152960,  20114,  43580,  23216, 166835,
+       118151,  11185,  82050,  60604, 108569,  72188,  92212,  66694,
+       105051, 142463,  64145, 171007,  77161, 155460,  38798, 160594,
+        94212,  51143,  11848, 170350,  68540,  82013,  25503,  82413,
+       154590,  51857, 128999,  61064, 101699,  71620,  15952, 165020,
+       115723,  44356,  12066,  48330,  41733,   5862,   5997,   5440,
+       167794, 172628, 157669,  66318,  96978, 145128, 141914,  99683,
+        71596,  57663, 149468,  92773, 117626,  26979, 138122, 175299,
+        18191, 158748,   5856,  41350,  52981,  29155, 159250,  43482,
+       176111,  42615, 166952, 157514,  66746,   5809, 173067, 149543,
+       138226,  28185,  84952,  49257, 155480,  80843, 136911,  85816,
+       119914, 151619,  47023,  58999,  82810,  18162, 104847, 173485,
+       150771,  42221,  57717,  88784,  98146,  68414, 130348, 113812,
+        59409,  40094,  11107, 170918, 175621,  77945, 173838, 103439,
+        62950, 148182, 145277, 154233, 156491,  54367,  95341, 135187,
+        91596, 165584, 147841, 170200,  52518,  36338,  71915,  85078,
+        68924,   7333,  70820,  58589,  18579, 109000, 130088, 123361,
+       169156, 166493,  17201,  95369,  31029,  73969,  14357, 170232,
+       138760,  61393,  47882, 107661, 155268, 168869, 171167, 116628,
+       174620,  61708, 138202,   5026,  15779,  94156, 159325,    957,
+       126534,  37996,  49599, 128671,  41868,  37513, 126629, 168215,
+       124328, 106448, 155013,  28549,  55847,  26235, 114982, 156836,
+        91746,  15125,  74650, 135605,  69565,  31495,   7850,  88208,
+       135031,  74460,  26140,  92796,  36146,  82934,  35023,   9958,
+        43309, 132293,  43549, 162731,  55329, 157351,  83082,  42227,
+        27564,  43478,  69474, 149986,  77505,  56704,   7852,   5300,
+       103225,  86465,  53024, 169906,  45686,  11109,  65493,  90043,
+        39411, 172615, 108338, 158455,  96158, 136162, 175644,  27963,
+       118056, 148988,   6691, 133583,  31962, 140405,  58434, 174711,
+       124722,   8797, 153914,  79256,  98794,  81308, 171620, 132506,
+       143478, 108851,  87588,  46529, 140425,  78718,  55283, 143581,
+        49135,  85684,  18926,   3140,  40915,  40649, 130546, 163328,
+       145208,  60819, 156483, 155505,  51401, 102787,  18456,  56712,
+       105983,  39810,  82248, 108902,  80189,  15874, 100602,  88656,
+        66171, 146550, 142181,  97854, 100398, 175083, 166462, 123230,
+        63761, 151016,  93058,   1564, 115643,  62527,   7314,    565,
+        87262,  59255,    867, 160232,  84592,  99202, 104681,  97525,
+        96260, 143038,  67253,  86713, 105763,  35134,  24374,  86210,
+        18630, 111067,  82191,  84144, 157811, 101684,  49800, 167683,
+        17780,  63054, 105274,  77500, 165994,  85813,  10736, 103499,
+       115935, 101027, 125853, 129362, 142527,  53176, 138530,  10987,
+        79991, 132021, 175530,  38121,  10630,  24148, 100180,  94230,
+        77224, 107902, 168658, 138131, 167355,  85354, 154259, 138419,
+        96420,  90081,  56633, 162282,  77356, 124891, 118459, 111392,
+        31169, 110609,  10258, 173313,   5019,  99980,  99195,  83175,
+       131196,  53996,  97648,   7806, 140435, 129701, 143899, 152586,
+        98686, 100361,    337, 124079, 103432, 146740,  61228, 176738,
+        63742,  86448, 159253,  82163, 150295,  42932,  82827,  51740,
+       109601, 158284, 175721, 101750,  33142,  74533,   9535, 113333,
+       136281,  64472, 172918, 157476,  91951, 112875,  39285, 116384,
+        44510, 131142,  70454,   8974,  42632, 142186,  85582,  87774,
+        67836, 115710,  56891, 119043,  65222, 173038, 117152, 137898,
+        26109, 111370,  24461,  30761,  20887,  96047,  55298, 148365,
+        84305,  78819,  78401, 174759,  83863,  39141, 106976,  29661,
+       127983,   3862, 135391, 122007, 132109,  39052, 160669, 139982,
+        56885, 146695,  83694,  40671]
+
+train_1_selection = [241266,  44231, 235186, 128155,  84469, 119886,  73860, 253558,
+       184159,  97094, 110431, 105040, 170276,  70690, 186078, 237257,
+       256509, 172457,  15700, 256161,  92162, 201093,  49406, 133049,
+       184789, 255505, 143377,   5277, 255319, 150640, 143161,  30866,
+       154364, 138123,  20230, 259144,   1988, 264093,  39249,  55195,
+        73822, 106740,  32443, 208219, 150782, 196292,  74768, 103265,
+       183722,  64278, 243898,  87209, 107538, 253736, 224129,  74716,
+       242412, 217246,  62031,  68743, 162349, 242451, 226795, 113443,
+        80709, 165904, 196423, 198815, 143744,  20809,  62766, 179510,
+       177938,  45284,  45395, 117796, 234801, 181297,  97879,  96916,
+        21903, 196077, 209302,  31603, 165318, 149545,  40384, 197509,
+        70488,  93200,  27756, 177492,  40587, 131517,  17733, 199221,
+        60692, 162167, 208085, 180057, 123359,  39571, 204713,  63426,
+        66331,  96961, 107948, 186860,  29477, 108538,  50453, 248504,
+        92575, 179109, 167868, 231429, 101301, 242411, 233148,  74984,
+         7394, 155078, 137531, 233051, 217693, 151083,  91661, 147661,
+       139274,   7396, 168672,  39699,  47838,  75145,  73863,   1821,
+        68298,  63900, 112238, 109818,  12204,  60253, 149880, 193967,
+       248688, 204152, 219583,  35814, 127935,  62605, 116382, 173099,
+        86916,  35547, 116314,  85645, 261244, 152716, 248796, 240245,
+        76285,  50622,  45787, 233223,  90106, 167785, 129004, 204125,
+       244634, 202061, 180924,  65228, 246637,  93476, 190824,  49910,
+       159879,  83186, 192924, 159676, 200154,  69605, 197511,  70647,
+        29578, 189387,   9593, 158990,  90771,  73406,  88739,  24222,
+        83258, 132100, 146691, 143862, 192273, 198754, 256978, 138845,
+       210747, 107820, 235181, 171791,  97800,   9448,  26497, 127907,
+       178528,   3834, 255542,  89279,  95521,  90330, 149829, 106889,
+       118887, 219515, 257671,  51537,  54963, 258710, 139200, 258098,
+        42060, 184105, 155628,  66141,  79246, 128142, 102859, 259123,
+        34902, 232247,  73239,  36426, 253537, 217515, 250995,  45363,
+       223013, 144158, 250589, 242812, 131082, 107900, 143967,  58237,
+        20438,  15818, 251722,  55448, 115804,  93141, 231572, 250187,
+       251215,  72804, 169125,  54460,  95031, 112829, 183070, 248171,
+       261081,  57474, 124248, 132220,  88030,  45705, 107493, 261768,
+       194233,  34451, 216561,  74921, 165172, 259608, 126623,  27476,
+       212391, 138834, 158867, 225366, 110459,  73084, 104676,  69317,
+        94426, 266285,   9037,  41061,  92258, 252514, 184030, 246339,
+       192288,  33482,   8136, 154926,  11725,  20442, 113503, 245483,
+        57914, 213633, 145997,  48757,  39962, 111230,  45585, 264812,
+       202761,  53083, 251285, 107557,  70692,  51220, 137497,  74640,
+       161427, 210217, 266416, 121841, 257052, 208823, 259001, 244708,
+        78584,  26309, 230758,  18954,  39959, 228367, 195858, 110157,
+           91,  28893, 110691, 191806, 187284,  54145,  29207,   2122,
+        71835, 102246,  35922, 138898,  90339, 123098, 163664,  36793,
+        60114, 117021, 129552,  42698, 177343,   5172, 175403, 110631,
+       228428,   9144,  24759, 241404, 257346, 165692,  83131,    915,
+       262429, 205354,  71722,  58987,  79116, 102736, 226170,  17450,
+       179863,  94395, 159890, 202015, 139001, 154397, 213694, 146428,
+       165695, 237526,  50258, 215755, 171272,  12644, 179226,   3938,
+       224430, 131779,  80550, 251898,  84159,  18437, 242904, 125169,
+        30865,  55401, 161074, 150490, 159713, 124104, 174059,  94483,
+       158967, 238129, 207998, 181772, 214754,  16071, 197381,  47281,
+        37996,  58073, 252088, 105790,  70970, 261555,  10640,  66349,
+       233827,  20946, 177476, 162185,  77957, 235142,  12207, 119585,
+       141200, 119950, 183737, 156148, 110092, 253248,  50255, 138739,
+       227825, 254110, 158414,  27446, 231904, 187763, 123838, 145120,
+       228971, 262956,  35221, 100288,  31653, 266988, 114291, 127908,
+       111092,  46629, 230059, 153192,  89672, 158605, 219242, 180063,
+       189810,  16773,  54204, 115703, 109197,   7723, 222288,  50761,
+       124831, 126725, 118506, 129568, 224566, 256385,  64630,  74495,
+       124042,  64225, 119055, 152925,  11045, 139912, 105826,  11114,
+       144642, 252553,  96435,  72604, 242925, 185539,   2097, 240749,
+       190902, 262115, 109597, 189027]
+        
+        
 import itertools
 class GPT2SentimentBLEUNoInputReward(object):
     TST_TEMPLATES_FILE_NAME = "/jupyter/prompt-generation/soft-Q-learning-for-text-generation/experiments/tst-templates-no-task-prefix.txt"
@@ -1491,8 +1624,10 @@ class GPT2SentimentBLEUNoInputReward(object):
 
         # https://huggingface.co/gpt2
         # https://huggingface.co/facebook/bart-large-mnli
-        generator_model = 'gpt2-large'
-        # generator_model = 'distilgpt2'
+        # generator_model = 'gpt2-xl'
+        # generator_model = 'gpt2-large'
+        # generator_model = 'gpt2-medium'
+        generator_model = 'distilgpt2'
         generator_device = 0
         evaluator_device = 0
         tokenizer = AutoTokenizer.from_pretrained(generator_model, pad_token='<|endoftext|>')
@@ -1505,7 +1640,13 @@ class GPT2SentimentBLEUNoInputReward(object):
             "sentiment-analysis",
             model=self.TST_CLF_CONFIG['model'],
             tokenizer=self.TST_CLF_CONFIG['tokenizer'],
-            device=evaluator_device)
+            device=evaluator_device,)
+            #return_all_scores=True)
+#         self._classifier = pipeline(
+#             "sentiment-analysis",
+#             model='cardiffnlp/twitter-roberta-base-sentiment-latest',
+#             device=evaluator_device,
+#             return_all_scores=True)
 
         # MOD for roberta
         # self.roberta_clf = pipeline("sentiment-analysis",model="siebert/sentiment-roberta-large-english")
@@ -1683,7 +1824,7 @@ class GPT2SentimentBLEUNoInputReward(object):
         
         self.temp_input = 'this is good.'
         # self.sbert = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-        self.ctc_scorer = StyleTransferScorer(align='E-roberta')
+        # self.ctc_scorer = StyleTransferScorer(align='E-roberta')
         self._bert_scorer = BERTScorer('roberta-large', device=evaluator_device, rescale_with_baseline=True, lang='en')
         
         self._tst_inputs = self._load_tst_inputs()
@@ -1692,17 +1833,17 @@ class GPT2SentimentBLEUNoInputReward(object):
                                 ('infer', 'LABEL_0'): 0,
                                 ('infer', 'LABEL_1'): 0}
         
-        self._tst_input_reward_ranges = defaultdict(tuple)
-        self._tst_input_reward_meanstd = defaultdict(RunningMeanStd)
+#         self._tst_input_reward_ranges = defaultdict(tuple)
+#         self._tst_input_reward_meanstd = defaultdict(RunningMeanStd)
         
-        masked_token_ids = self._get_masked_token_ids(tokenizer)
-        class TokenIdMasker(LogitsProcessor): 
-            MASKED_TOKEN_IDS = masked_token_ids
-            def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor: 
-                scores[:, self.MASKED_TOKEN_IDS] = float('-inf')
-                return scores
+#         masked_token_ids = self._get_masked_token_ids(tokenizer)
+#         class TokenIdMasker(LogitsProcessor): 
+#             MASKED_TOKEN_IDS = masked_token_ids
+#             def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor: 
+#                 scores[:, self.MASKED_TOKEN_IDS] = float('-inf')
+#                 return scores
 
-        self.logits_processor_list = LogitsProcessorList([TokenIdMasker()])
+#         self.logits_processor_list = LogitsProcessorList([TokenIdMasker()])
    
         self.sample_size = 4
         self.temperature = 1.0
@@ -1814,11 +1955,25 @@ class GPT2SentimentBLEUNoInputReward(object):
         idx = 0
         # size = len(self.dataset_inputs)
         # size = 16
-        size = 500
-        tst_inputs[('train', 'LABEL_0')] = sentences_test_ref_1[idx:(idx+size)]
+        # size = 500
+        size = 10000
+        
+        sentences_train_0_sample = np.array(sentences_train_0)[train_0_selection].tolist()
+        sentences_train_1_sample = np.array(sentences_train_1)[train_1_selection].tolist()
+        
+        
+        # sentences_train_0_sample = list(np.random.choice(sentences_train_0, size=size, replace=False))
+        # sentences_train_1_sample = list(np.random.choice(sentences_train_1, size=size, replace=False))
+        # tst_inputs[('train', 'LABEL_0')] = sentences_test_ref_1[idx:(idx+size)]
+        size = len(sentences_train_1)
+        tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
+        # tst_inputs[('train', 'LABEL_0')] = sentences_train_1_sample
         tst_inputs[('train', 'LABEL_0')] = list(itertools.chain(*[[s for _ in range(self.n_repeats)] \
                                                                    for s in tst_inputs[('train', 'LABEL_0')]]))
-        tst_inputs[('train', 'LABEL_1')] = sentences_test_ref_0[idx:(idx+size)]
+        # tst_inputs[('train', 'LABEL_1')] = sentences_test_ref_0[idx:(idx+size)]
+        size = len(sentences_train_0)
+        tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
+        # tst_inputs[('train', 'LABEL_1')] = sentences_train_0_sample
         tst_inputs[('train', 'LABEL_1')] = list(itertools.chain(*[[s for _ in range(self.n_repeats)] \
                                                                    for s in tst_inputs[('train', 'LABEL_1')]]))
         # tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
@@ -1968,7 +2123,7 @@ class GPT2SentimentBLEUNoInputReward(object):
         #     - List of length `num_return_sequences`
         #         - Dict of {"generated_text": str}
         self.tokens_explored = self.tokens_explored.union(*[set(p.split()) for p in prompts])
-        # print(len(self.tokens_explored) + ' tokens explored')
+#         print(len(self.tokens_explored) + ' tokens explored')
         source_indices, source_strings = self._get_inputs(mode, target_labels)
         # print(source_strings)
         # print('Reward:', source_strings)
@@ -2083,7 +2238,8 @@ class GPT2SentimentBLEUNoInputReward(object):
             try:
                 # reference_texts = [source_strings[batch_index] for _ in generator_outputs[batch_index]]
 #                 reference_texts = [source_strings[batch_index] for _ in generator_outputs]
-                reference_texts = [source_strings[batch_index] for _ in out]
+                reference_texts = [source_strings[batch_index] for g in generated_texts]
+                # generated_texts = [g for g in generated_texts if len(g) > 0]
                 
                 check_Xs_Ys_sizes(generated_texts, reference_texts)
                 
@@ -2091,18 +2247,18 @@ class GPT2SentimentBLEUNoInputReward(object):
                 # `sacrebleu` is ~3X faster than `lightning`
                 # `sacrebleu-parallel` is ~3X faster than `sacrebleu`
                 
-                bleus = [
-                    scb.sentence_bleu(
-                        hypothesis=x,
-                        references=[y])
-                    for x, y in zip(
-                        generated_texts,
-                        reference_texts)
-                ]
-                eps = 1e-3
-                bleu_rewards = [b.score + eps for b in bleus]
-                mean_bleu = torch.tensor(bleu_rewards).float().mean()
-                quantities_to_log['bleu'].append(mean_bleu)
+#                 bleus = [
+#                     scb.sentence_bleu(
+#                         hypothesis=x,
+#                         references=[y])
+#                     for x, y in zip(
+#                         generated_texts,
+#                         reference_texts)
+#                 ]
+#                 eps = 1e-3
+#                 bleu_rewards = [b.score + eps for b in bleus]
+#                 mean_bleu = torch.tensor(bleu_rewards).float().mean()
+#                 quantities_to_log['bleu'].append(mean_bleu)
 
                 ### The bleus here are temporarily sbert scores ###
 #                 sberts = self.sbert_sim(reference_texts[0].lower(), 
@@ -2110,137 +2266,184 @@ class GPT2SentimentBLEUNoInputReward(object):
 #                 sbert_rewards = [s * 100 for s in sberts]
 #                 sbert = torch.tensor(sbert_rewards).float().mean()
 #                 quantities_to_log["sbert"].append(sbert)
+
+                compute_bertscore = True
+                if compute_bertscore:
+                    bertscore_f1 = self._bert_scorer.score(generated_texts, 
+                                                           reference_texts)[2]
+                    bertscore_rewards = [max(b, 0) for b in (bertscore_f1 * 100).tolist()]
+                    bertscore = torch.tensor(bertscore_rewards).float().mean()
+                    quantities_to_log['bertscore'].append(bertscore)
                 
-                bertscore_f1 = self._bert_scorer.score(generated_texts, 
-                                                       reference_texts)[2]
-                bertscore_rewards = [max(b, 0) for b in (bertscore_f1 * 100).tolist()]
-                bertscore = torch.tensor(bertscore_rewards).float().mean()
-                quantities_to_log['bertscore'].append(bertscore)
+#                 generated_encoding = (self._generator
+#                                            .tokenizer(generated_texts, 
+#                                                       padding=True,
+#                                                       return_tensors='pt'))
+#                 generated_lengths = generated_encoding['attention_mask'].sum(dim=1).tolist()
                 
-                generated_encoding = (self._generator
-                                           .tokenizer(generated_texts, 
-                                                      padding=True,
-                                                      return_tensors='pt'))
-                generated_lengths = generated_encoding['attention_mask'].sum(dim=1).tolist()
+#                 reference_encoding = (self._generator
+#                                            .tokenizer(reference_texts, 
+#                                                       padding=True,
+#                                                       return_tensors='pt'))
+#                 reference_lengths = reference_encoding['attention_mask'].sum(dim=1).tolist()
+#                 length_penalties = [np.exp(1 - max(g, r) / min(g, r)) if min(g, r) > 0 else 0 \
+#                                     for g, r in zip(generated_lengths, reference_lengths)]
                 
-                reference_encoding = (self._generator
-                                           .tokenizer(reference_texts, 
-                                                      padding=True,
-                                                      return_tensors='pt'))
-                reference_lengths = reference_encoding['attention_mask'].sum(dim=1).tolist()
-                length_penalties = [np.exp(1 - max(g, r) / min(g, r)) if min(g, r) > 0 else 0 \
-                                    for g, r in zip(generated_lengths, reference_lengths)]
+                compute_recon = True
+                if compute_recon:
+                    # recon_rewards = [lp**0.25 * b for lp, b in zip(length_penalties, bertscore_rewards)]
+                    recon_rewards = bertscore_rewards
+                    # recon_rewards = [(3 * bert + bleu) / 4 for bert, bleu in zip(bertscore_rewards, bleu_rewards)]
+                    # recon_rewards = bleu_rewards
+                    # recon_rewards = sbert_rewards
+                    recon = torch.tensor(recon_rewards).float().mean()
+                    quantities_to_log["recon"].append(recon)
                 
+                compute_sentiment = True
+                if compute_sentiment:
+                    X_output = MyDataset(generated_texts)
+                    classes = self._classifier(X_output, truncation=True)
+                    # print(clf_results)
+                    label = target_labels[batch_index]
+                    # label = 'Negative' if label == 'LABEL_0' else 'Positive' if label == 'LABEL_1' else None
+                    # print(label)
+
+    #                 # class_label_mapping = ['Negative', 'Neutral', 'Positive']
+    #                 class_label_mapping = ['LABEL_0', 'LABEL_1']
+    #                 classes = [np.argmax([d['score'] for d in result]) for result in clf_results]
+    #                 # print(classes)
+    #                 class_labels = [class_label_mapping[c] for c in classes]
+    #                 correct = [c == label for c in class_labels]
+    #                 # print(correct)
+
+    #                 probs = [{d['label']: d['score'] for d in result}[label] for result in clf_results]
+    #                 # print(probs)
+
+
+                    correct = [(c['label'] == label) for c in classes]
+                    acc = torch.tensor(correct).float().mean()
+                    quantities_to_log['acc'].append(acc)
+                    probs = [(c['label'] == label) * c['score'] + (c['label'] != label) * (1 - c['score']) for c in classes]
+                    style = torch.tensor(probs).float().mean()
+                    quantities_to_log['style'].append(style)
                 
-                # recon_rewards = [lp**0.25 * b for lp, b in zip(length_penalties, bertscore_rewards)]
-                recon_rewards = bertscore_rewards
-                # recon_rewards = [(3 * bert + bleu) / 4 for bert, bleu in zip(bertscore_rewards, bleu_rewards)]
-                # recon_rewards = bleu_rewards
-                # recon_rewards = sbert_rewards
-                recon = torch.tensor(recon_rewards).float().mean()
-                quantities_to_log["recon"].append(recon)
-                
-                X_output = MyDataset(generated_texts)
-                classes = self._classifier(X_output, truncation=True)
-                label = target_labels[batch_index]
-                correct = [(c['label'] == label) for c in classes]
-                acc = torch.tensor(correct).float().mean()
-                quantities_to_log['acc'].append(acc)
-                probs = [(c['label'] == label) * c['score'] + (c['label'] != label) * (1 - c['score']) for c in classes]
-                style = torch.tensor(probs).float().mean()
-                quantities_to_log['style'].append(style)
-                
-                
-                if self._warm_up_reward:
-                    sum_rewards = [b for b, c, p in zip(recon_rewards, correct, probs)]
-                    reward = torch.tensor(sum_rewards).float().mean()
-                    if reward > 80 and self._counter >= 1000:
-                        self._warm_up_reward = False
-                        print("Warm up reward ends")
-                        top_index = 0
+                compute_sum_reward = True
+                if compute_sum_reward:
+                    if self._warm_up_reward:
+                        sum_rewards = [b for b, c, p in zip(recon_rewards, correct, probs)]
+                        reward = torch.tensor(sum_rewards).float().mean()
+                        if reward > 80 and self._counter >= 1000:
+                            self._warm_up_reward = False
+                            print("Warm up reward ends")
+                            top_index = 0
+                    else:
+                        recon_weight = 1
+                        style_weight = 1
+    #                     sum_rewards = [(recon_weight * r + style_weight * 100 * c) / (recon_weight + style_weight) \
+    #                                    for r, c, p in zip(recon_rewards, correct, probs)]
+                        sum_rewards = [(recon_weight * r + style_weight * 100 * p) / (recon_weight + style_weight) \
+                                       for r, c, p in zip(recon_rewards, correct, probs)]
+                        # Perform reward clipping
+                        reward_clipping = False
+                        if reward_clipping: 
+                            clip_reward = 85
+                            sum_rewards = [min(r, clip_reward) for r in sum_rewards]
+
+                        # Monte Carlo k_reward times and average
+                        mc_avg = True
+                        if mc_avg:
+                            l = len(sum_rewards)
+                            k = k_reward
+                            segmented_sum_rewards = [sum_rewards[i*l//k:(i+1)*l//k] for i in range(k)]
+
+                            mean_sum_reward = torch.tensor(segmented_sum_rewards).float().mean()
+                            values, indices = torch.tensor(segmented_sum_rewards).float().max(axis=1)
+
+                            list_values = [segmented_sum_rewards[i][index] for i, index in enumerate(indices)]
+                            input_rewards[reference_texts[0]] += list_values
+                            max_sum_reward = values.mean()
+
+                            max_reward_value = max(list_values)
+
+                        comb_avg = False
+                        assert not (mc_avg and comb_avg)
+                        if comb_avg: 
+                            sorted_sum_rewards = list(sorted(sum_rewards))
+                            n = n_reward
+                            # N = n_reward*k_reward
+                            N = N
+                            NCn = math.comb(N, n)
+
+                            max_sum_reward = sum([math.comb(i-1, n-1) * sum_rewards[i-1] / NCn for i in range(n, N+1)])
+                            max_sum_reward = torch.tensor(max_sum_reward).float()
+                            input_rewards[reference_texts[0]] += [max_sum_reward]
+                            max_reward_value = max(sum_rewards)
+                        
+                    
+                        # mean_sum_reward = torch.tensor(sum_rewards).float().mean()
+                        # max_sum_reward = torch.tensor(sum_rewards).float().max()
+
+    #                     log_sum_rewards = [(recon_weight * np.log(r / 100) + style_weight * np.log(p)) / (recon_weight + style_weight) \
+    #                                    for r, c, p in zip(recon_rewards, correct, probs)]
+    #                     # print(log_sum_rewards)
+    #                     mean_log_sum_reward = torch.tensor(log_sum_rewards).float().nanmean()
+    #                     max_log_sum_reward = torch.nan_to_num(torch.tensor(log_sum_rewards), nan=-100).float().max()
+
+    #                     prod_rewards = [(b * c) for b, c, p in zip(recon_rewards, correct, probs)]
+    #                     mean_prod_reward = torch.tensor(prod_rewards).float().mean()
+    #                     max_prod_reward = torch.tensor(prod_rewards).float().max()
+
+                        # top_index = 0
+                        # top_index = sum_rewards.index(max_sum_reward)
+                        # list_values = [segmented_sum_rewards[i][index] for i, index in enumerate(indices)]
+                        # input_rewards[reference_texts[0]] += list_values
+
+                        top_index = sum_rewards.index(max_reward_value)
+                        # top_index = log_sum_rewards.index(max_log_sum_reward)
+                        # top_index = prod_rewards.index(max_prod_reward)
+                        # reward = recon
+                        # reward = mean_bleu
+                        # reward = sbert
+                        # reward = ctc
+                        # reward = bertscore
+                        # reward = max_log_sum_reward
+                        # reward = mean_log_sum_reward
+                        # reward = max_sum_reward * max(torch.exp(1.5 * (max_sum_reward - 80) / 100), 1)
+
+                        reward = max_sum_reward
+                        # clip_reward = 85
+                        # reward = torch.min(torch.tensor([reward, clip_reward]))
+                        
+                        quantities_to_log["sum_reward"].append(max_sum_reward)
+                        mean_reward = torch.tensor(sum_rewards).float().mean()
+                        quantities_to_log["mean_reward"].append(mean_reward)
+                        top_recon = torch.tensor(recon_rewards[top_index]).float()
+                        quantities_to_log["top_recon"].append(top_recon)
+                        # top_acc = torch.tensor(correct[top_index]).float()
+                        # quantities_to_log["top_acc"].append(top_acc)
+                        top_style = torch.tensor(probs[top_index]).float()
+                        quantities_to_log["top_style"].append(top_style)
+                        
+                        print(self._counter, '|',
+                              prompts[batch_index], '|', 
+                              formatted_prompts[batch_index], '|', 
+                              generated_texts[top_index], '|', 
+                              # 'SBERT:', round(sbert_rewards[top_index], 2), '|',
+                              # 'BLEU:', round(bleu_rewards[top_index], 2), '|',
+                              'BERTScore:', round(bertscore_rewards[top_index], 2), '|',
+                              # 'ACC:', round(correct[top_index], 2), '|',
+                              'STYLE:', round(probs[top_index], 2), '|',
+                              'Sum Reward:', round(sum_rewards[top_index], 2), '|',
+                              'Reward:', round(reward.item(), 2))
+                            
                 else:
-                    recon_weight = 1
-                    style_weight = 1
-#                     sum_rewards = [(recon_weight * r + style_weight * 100 * c) / (recon_weight + style_weight) \
-#                                    for r, c, p in zip(recon_rewards, correct, probs)]
-                    sum_rewards = [(recon_weight * r + style_weight * 100 * p) / (recon_weight + style_weight) \
-                                   for r, c, p in zip(recon_rewards, correct, probs)]
-                    # Perform reward clipping
-                    reward_clipping = False
-                    if reward_clipping: 
-                        clip_reward = 85
-                        sum_rewards = [min(r, clip_reward) for r in sum_rewards]
-
-                    # Monte Carlo k_reward times and average
-                    mc_avg = True
-                    if mc_avg:
-                        l = len(sum_rewards)
-                        k = k_reward
-                        segmented_sum_rewards = [sum_rewards[i*l//k:(i+1)*l//k] for i in range(k)]
-
-                        mean_sum_reward = torch.tensor(segmented_sum_rewards).float().mean()
-                        values, indices = torch.tensor(segmented_sum_rewards).float().max(axis=1)
-
-                        list_values = [segmented_sum_rewards[i][index] for i, index in enumerate(indices)]
-                        input_rewards[reference_texts[0]] += list_values
-                        max_sum_reward = values.mean()
-                        
-                        max_reward_value = max(list_values)
-                        
-                    comb_avg = False
-                    assert not (mc_avg and comb_avg)
-                    if comb_avg: 
-                        sorted_sum_rewards = list(sorted(sum_rewards))
-                        n = n_reward
-                        # N = n_reward*k_reward
-                        N = N
-                        NCn = math.comb(N, n)
-                        
-                        max_sum_reward = sum([math.comb(i-1, n-1) * sum_rewards[i-1] / NCn for i in range(n, N+1)])
-                        max_sum_reward = torch.tensor(max_sum_reward).float()
-                        input_rewards[reference_texts[0]] += [max_sum_reward]
-                        max_reward_value = max(sum_rewards)
-                        
-                    
-                    # mean_sum_reward = torch.tensor(sum_rewards).float().mean()
-                    # max_sum_reward = torch.tensor(sum_rewards).float().max()
-                    
-#                     log_sum_rewards = [(recon_weight * np.log(r / 100) + style_weight * np.log(p)) / (recon_weight + style_weight) \
-#                                    for r, c, p in zip(recon_rewards, correct, probs)]
-#                     # print(log_sum_rewards)
-#                     mean_log_sum_reward = torch.tensor(log_sum_rewards).float().nanmean()
-#                     max_log_sum_reward = torch.nan_to_num(torch.tensor(log_sum_rewards), nan=-100).float().max()
-                    
-#                     prod_rewards = [(b * c) for b, c, p in zip(recon_rewards, correct, probs)]
-#                     mean_prod_reward = torch.tensor(prod_rewards).float().mean()
-#                     max_prod_reward = torch.tensor(prod_rewards).float().max()
-                    
-                    # top_index = 0
-                    # top_index = sum_rewards.index(max_sum_reward)
-                    # list_values = [segmented_sum_rewards[i][index] for i, index in enumerate(indices)]
-                    # input_rewards[reference_texts[0]] += list_values
-                                        
-                    top_index = sum_rewards.index(max_reward_value)
-                    # top_index = log_sum_rewards.index(max_log_sum_reward)
-                    # top_index = prod_rewards.index(max_prod_reward)
-                    # reward = recon
-                    # reward = mean_bleu
-                    # reward = sbert
-                    # reward = ctc
-                    # reward = bertscore
-                    # reward = max_log_sum_reward
-                    # reward = mean_log_sum_reward
-                    # reward = max_sum_reward * max(torch.exp(1.5 * (max_sum_reward - 80) / 100), 1)
-                    
-                    reward = max_sum_reward
-                    # clip_reward = 85
-                    # reward = torch.min(torch.tensor([reward, clip_reward]))
+                    reward = bertscore
 
                 # idx = self.dataset_inputs.index(reference_texts[0])
-                idx_2 = source_indices[batch_index]
+                # idx_2 = source_indices[batch_index]
                 # assert idx == idx_2, f'{idx} {idx_2}'
                 # print(idx_2, len(self.dataset_inputs))
-                quantities_to_log[f'example_{idx_2}_sum_reward'].append(max_sum_reward)
+                # quantities_to_log[f'example_{idx_2}_sum_reward'].append(max_sum_reward)
                 
                 input_zscore = False
                 if input_zscore:
@@ -2285,15 +2488,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                 
                 # quantities_to_log["num_input_ranges"].append(torch.tensor(len(self._tst_input_reward_ranges)).float())
                 
-                quantities_to_log["sum_reward"].append(max_sum_reward)
-                mean_reward = torch.tensor(sum_rewards).float().mean()
-                quantities_to_log["mean_reward"].append(mean_reward)
-                top_recon = torch.tensor(recon_rewards[top_index]).float()
-                quantities_to_log["top_recon"].append(top_recon)
-                # top_acc = torch.tensor(correct[top_index]).float()
-                # quantities_to_log["top_acc"].append(top_acc)
-                top_style = torch.tensor(probs[top_index]).float()
-                quantities_to_log["top_style"].append(top_style)
+                
 
                 # quantities_to_log["sample_size"].append(torch.tensor(self.sample_size).float())
                 quantities_to_log["num_tokens_explored"].append(torch.tensor(len(self.tokens_explored)).float())
@@ -2310,17 +2505,7 @@ class GPT2SentimentBLEUNoInputReward(object):
                     quantities_to_log["nll"].append(nll_reward)
 
                 # print(source_strings)
-                print(self._counter, '|',
-                      prompts[batch_index], '|', 
-                      formatted_prompts[batch_index], '|', 
-                      generated_texts[top_index], '|', 
-                      # 'SBERT:', round(sbert_rewards[top_index], 2), '|',
-                      'BLEU:', round(bleu_rewards[top_index], 2), '|',
-                      'BERTScore:', round(bertscore_rewards[top_index], 2), '|',
-                      'ACC:', round(correct[top_index], 2), '|',
-                      'STYLE:', round(probs[top_index], 2), '|',
-                      'Sum Reward:', round(sum_rewards[top_index], 2), '|',
-                      'Reward:', round(reward.item(), 2))
+                
                 
                 
                 rewards.append(reward)
@@ -2410,6 +2595,7 @@ class GPT2SentimentBLEUNoInputReward(object):
             else:
                 rewards_tensor = (rewards_tensor - rewards_tensor.mean()) / (rewards_tensor.std() + 1e-4)
             
+        input_zscore = False
         input_zscore = input_zscore
         if input_zscore: 
             for s in set(source_strings):

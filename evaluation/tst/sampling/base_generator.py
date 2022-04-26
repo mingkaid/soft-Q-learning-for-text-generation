@@ -10,8 +10,16 @@ from bert_score import BERTScorer
 from torch.utils.data import Dataset
 import re
 
+def bertscore_recon_score(**kwargs): return kwargs['bertscore']
+def bert_3_bleu_1_recon_score(**kwargs): return (3 * kwargs['bertscore'] + 1 * kwargs['bleu']) / 4
+
+recon_score_fns = {'bertscore': bertscore_recon_score,
+                   'bert_3_bleu_1': bert_3_bleu_1_recon_score}
 class BaseGenerator(): 
-    def __init__(self, device, reward_device=None): 
+    def __init__(self, 
+                 device, 
+                 reward_device=None,
+                 recon_score='bertscore'): 
         self.device = device
         self.reward_device = reward_device if reward_device is not None else self.device
         self.classifier = pipeline("sentiment-analysis",
@@ -24,6 +32,9 @@ class BaseGenerator():
                                       device=self.reward_device, 
                                       rescale_with_baseline=True, 
                                       lang='en')
+        
+        assert recon_score in recon_score_fns
+        self._recon_score = recon_score_fns[recon_score]
         
         self._load_data()
         
@@ -47,8 +58,8 @@ class BaseGenerator():
         return outputs
     
     def _recon_score(self, **kwargs): 
-        return kwargs['bertscore']
-        # return (3 * kwargs['bertscore'] + 1 * kwargs['bleu']) / 4
+        # return kwargs['bertscore']
+        return (3 * kwargs['bertscore'] + 1 * kwargs['bleu']) / 4
         
     def _select_output(self,
                        generated_texts, 
