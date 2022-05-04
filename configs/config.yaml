@@ -5,7 +5,7 @@ translation:
     architecture: "transformer_small"
     mix_strategy: "mix"
     save_dir: "???"
-    random_seed: 1
+    random_seed: 0
     # Training time
     num_epochs: 30
     save_frequency: 1
@@ -42,25 +42,8 @@ translation:
     warmup_num_epochs: null
     # Hacks
     hack_truncate_length_constant: null
-    # Classification
-    classification:
-        task_name: "???"
-        template: "???"
-        mapping: "???"
-        data_dir: "???"
-        prompt: true
-        use_demo: false
-        num_sample: 16
-        max_seq_length: 512
-        first_sent_limit: null
-        other_sent_limit: null
-        template_list: null
-        overwrite_cache: null
-        demo_filter: false
-        demo_filter_model: null
-        demo_filter_rate: 0.5
-        debug_mode: false
-        gpt3_in_context_head: false
-        gpt3_in_context_tail: false
-        gpt3_in_context_num: 32
-    
+    # classification settings
+    LM_type: "distilgpt2"
+    experiment: "Test"
+    experiment_seed: 0
+    kshot: -1
