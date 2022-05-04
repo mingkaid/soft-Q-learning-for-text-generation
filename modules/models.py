@@ -71,10 +71,16 @@ def _top_k_logits(logits: torch.Tensor, k: int) -> torch.Tensor:
         return logits
 
     values, _ = torch.topk(logits, k=k)
+    sum_values = values.sum(dim=-1).unsqueeze(-1)
     min_values: torch.Tensor = values[:, -1].unsqueeze(-1)
-    return torch.where(
+    normalization = False
+    if normalization != True:
+        return torch.where(
         logits < min_values,
         torch.full_like(logits, float('-inf')), logits)
+    else:
+        return values, _
+
 
 def _top_p_logits(logits: torch.Tensor, p: float) -> torch.Tensor:
     r"""Adapted from
@@ -144,7 +150,7 @@ class GPT2ConditionedMLP(nn.Module):
         if mode == 'gpt2_vocab': 
             self.mlp = _build_gpt2_vocab_mlp(self.target_vocab_size).to(0)
             self._mlp_forward = self._gpt2_vocab_mlp_forward
-            self.valid_token_ids = json.load(open('/home/c2hsieh/soft-Q-learning-for-text-generation/'
+            self.valid_token_ids = json.load(open('/data/home/ubuntu/classification/soft-Q-learning-for-text-generation/'
                                                   'experiments/valid_gpt2_token_ids.yelp_negative_prep'))
             self.valid_token_ids = None
         elif mode == 'self_vocab': 
@@ -242,10 +248,8 @@ class GPT2ConditionedMLP(nn.Module):
             # logits = self.mlp(state)
             logits = self._mlp_forward(state)
 #             print(state.min().item(), state.max().item())
-#             print(logits.min().item(), logits.max().item())
-            normalized_logits = torch.softmax(logits, dim=1)
-            print(i, torch.topk(normalized_logits, 10).indices[0].cpu(), torch.topk(normalized_logits, 10).values[0].cpu())
-    
+            print(logits.min().item(), logits.max().item())
+            
             if top_k is not None: sampling_logits = _top_k_logits(logits, k=top_k)
             elif top_p is not None: sampling_logits = _top_p_logits(logits, p=top_p)
             else: sampling_logits = logits
@@ -253,6 +257,10 @@ class GPT2ConditionedMLP(nn.Module):
             actions = (torch.distributions.categorical
                        .Categorical(logits=sampling_logits)
                        .sample())
+            
+            #actions = index[list(range(actions.size(0))), actions]
+            
+            
             tokens = self.target_vocab.map_ids_to_tokens_py(actions.tolist()).tolist()
 #             tokens = self.generator.tokenizer.convert_ids_to_tokens(actions.tolist())
             # if i == 0: print(tokens)
