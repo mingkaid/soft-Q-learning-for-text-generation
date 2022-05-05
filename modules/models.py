@@ -71,16 +71,10 @@ def _top_k_logits(logits: torch.Tensor, k: int) -> torch.Tensor:
         return logits
 
     values, _ = torch.topk(logits, k=k)
-    sum_values = values.sum(dim=-1).unsqueeze(-1)
     min_values: torch.Tensor = values[:, -1].unsqueeze(-1)
-    normalization = False
-    if normalization != True:
-        return torch.where(
+    return torch.where(
         logits < min_values,
         torch.full_like(logits, float('-inf')), logits)
-    else:
-        return values, _
-
 
 def _top_p_logits(logits: torch.Tensor, p: float) -> torch.Tensor:
     r"""Adapted from
@@ -248,8 +242,10 @@ class GPT2ConditionedMLP(nn.Module):
             # logits = self.mlp(state)
             logits = self._mlp_forward(state)
 #             print(state.min().item(), state.max().item())
-            print(logits.min().item(), logits.max().item())
-            
+#             print(logits.min().item(), logits.max().item())
+            normalized_logits = torch.softmax(logits, dim=1)
+            print(i, torch.topk(normalized_logits, 10).indices[0].cpu(), torch.topk(normalized_logits, 10).values[0].cpu())
+    
             if top_k is not None: sampling_logits = _top_k_logits(logits, k=top_k)
             elif top_p is not None: sampling_logits = _top_p_logits(logits, p=top_p)
             else: sampling_logits = logits
@@ -257,10 +253,6 @@ class GPT2ConditionedMLP(nn.Module):
             actions = (torch.distributions.categorical
                        .Categorical(logits=sampling_logits)
                        .sample())
-            
-            #actions = index[list(range(actions.size(0))), actions]
-            
-            
             tokens = self.target_vocab.map_ids_to_tokens_py(actions.tolist()).tolist()
 #             tokens = self.generator.tokenizer.convert_ids_to_tokens(actions.tolist())
             # if i == 0: print(tokens)
@@ -359,13 +351,18 @@ class GPT2ConditionedMLP(nn.Module):
                 mode: ForwardMode,
                 **kwargs) -> Union[Tuple[tx.modules.TransformerDecoderOutput, 
                                          LongTensor], 
-                                   Dict]:        
-        formatted_input_template = self.input_template.format(sentence_1=self.sentence_1)
-        input_ids = (self.generator
+                                   Dict]:       
+        single_input = True
+        if single_input:
+            formatted_input_template = self.input_template.format(sentence_1=self.sentence_1)
+            input_ids = (self.generator
                      .tokenizer([self.temp_input \
                                  for _ in range(len(batch['source_text']))], 
                                 return_tensors='pt')['input_ids']
                      .to(0))
+        else:
+            pass
+
         outputs = (self.generator.model
                    .transformer(input_ids, use_cache=True))
         last_token_hidden_state = outputs.last_hidden_state[:, -1, :]
