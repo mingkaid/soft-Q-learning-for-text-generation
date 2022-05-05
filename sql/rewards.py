@@ -3128,9 +3128,9 @@ class PLMClassifierReward(object):
                 neg_ratio = torch.tensor(0).to('cuda')
 '''
             # continuous reward
-            #reward = (pos_pos_prob + neg_neg_prob) * 50
+            reward = (pos_pos_prob + neg_neg_prob) * 50
             # piecewise reward
-            
+            '''
             if pos_pos_prob >= 0.5 and neg_neg_prob >= 0.5:# w/o shaping, [2+]
                 #if pos_pos_prob >=0.6 and neg_neg_prob >=0.6:
                 #    reward = 15+torch.log(pos_ratio*neg_ratio) # 5
@@ -3148,7 +3148,7 @@ class PLMClassifierReward(object):
                     reward = 1.5 *torch.clip(torch.log(neg_neg_prob * 2), min=-5)
             elif pos_pos_prob < 0.5 and neg_neg_prob < 0.5: # [-24,-11]
                 reward = 8*torch.clip(torch.log(pos_pos_prob*neg_neg_prob),min=-3) # clip:  #torch.tensor(-5).to('cuda')
-            
+            '''
             quantities_to_log["pp"].append(pos_pos_prob.item())
             quantities_to_log["pn"].append(pos_neg_prob.item())
             quantities_to_log["nn"].append(neg_neg_prob.item())
@@ -3179,7 +3179,7 @@ class PLMClassifierReward(object):
         rewards_tensor = torch.stack(rewards)
         
         if mode=='train':
-            batch_zscore = False
+            batch_zscore = True
             if batch_zscore:
                 #input_reward_means = {k:np.mean(v) for k,v in input_rewards.items()}
                 input_reward_means = {k:np.mean(v) for k,v in input_rewards.items()}
@@ -3188,7 +3188,7 @@ class PLMClassifierReward(object):
                 # not source strings
                 idx_means = torch.tensor(input_reward_means['a']).float()
                 idx_stds = torch.tensor(input_reward_stds['a']).float()
-                rewards_tensor = (rewards_tensor - idx_means)#/(idx_stds + 1e-4)
+                rewards_tensor = (rewards_tensor - idx_means)/(idx_stds + 1e-4)
 
             for i in range(rewards_tensor.size(0)):
                 quantities_to_log['resized_reward'].append(rewards_tensor[i].item())
