@@ -2820,7 +2820,8 @@ class PLMClassifierReward(object):
                                 ('train', 'LABEL_1'): 0,
                                 ('infer', 'LABEL_0'): 0,
                                 ('infer', 'LABEL_1'): 0}
-        
+        self._tst_inputs_sep_idx = {'train': 0,
+                                    'infer': 0}
         ### Modification starts ###
         self._counter = 0
     
@@ -2889,6 +2890,11 @@ class PLMClassifierReward(object):
             tst_inputs[('train', 'LABEL_1')] = list(train_neg_dict.keys())#sentences_train_0[:kshot]
             tst_inputs[('infer', 'LABEL_0')] = list(dev_pos_dict.keys())#sentences_train_1[-kshot:]
             tst_inputs[('infer', 'LABEL_1')] = list(dev_neg_dict.keys())#sentences_train_0[-kshot:]
+            tst_inputs['train'] = [(text,1) for text in list(train_pos_dict.keys())] + [(text, 0) for text in list(train_neg_dict.keys())]
+            tst_inputs['infer'] = [(text,1) for text in list(dev_pos_dict.keys())] + [(text, 0) for text in list(dev_neg_dict.keys())]
+            random.Random(0).shuffle(tst_inputs['train'])
+            random.Random(0).shuffle(tst_inputs['infer'])
+
 
         elif experiment == 'ImbFSL': # kshot x 2->training examples
             tst_inputs['train'] = [(sentence, 'LABEL_0') for sentence in sentences_train_1] + [(sentence, 'LABEL_1') for sentence in sentences_train_0]
@@ -2910,12 +2916,19 @@ class PLMClassifierReward(object):
         return [self._tokenizer.convert_tokens_to_string(s.split())
                 for s in tokens]
 
-    def _format_prompts(self, source_strings: List[str], prompt_strings: List[str]) -> List[str]:
+    def _format_prompts(self, source_strings: List[str], prompt_strings: List[str], PAIR: bool) -> List[str]:
         template = self._tst_templates[0]
-        return [
-            template.format(sentence_1=s, prompt=p) for s_1, p
-            in zip(source_strings, prompt_strings) for s in s_1
-        ]
+        if PAIR == True:
+            return [
+                template.format(sentence_1=s, prompt=p) for s_1, p
+                in zip(source_strings, prompt_strings) for s in s_1
+            ]
+        else:
+            return [
+                template.format(sentence_1=s_1[0], prompt=p) for s_1, p
+                in zip(source_strings, prompt_strings)
+            ]
+
 
     
     def _get_inputs(self, mode: str, target_labels: List[str]): 
@@ -2938,31 +2951,47 @@ class PLMClassifierReward(object):
         
         return inputs
 
-    def _get_few_shot_inputs(self, mode: str, target_labels: List[str], kshot: int): 
+    def _get_few_shot_inputs(self, mode: str, target_labels: List[str], kshot: int, PAIR: bool): 
         # per batch
         inputs = []
 
         p_data = self._tst_inputs[(mode, 'LABEL_0')]
         n_data = self._tst_inputs[(mode, 'LABEL_1')]
+        if PAIR == False:
+            w_data = self._tst_inputs[mode]
         for i, label in enumerate(target_labels): # current input per batch
-            idx = self._tst_inputs_idx[(mode, label)]
+            idx = self._tst_inputs_idx[(mode, label)] if PAIR==True else self._tst_inputs_sep_idx[mode]
             #p_data = self._tst_inputs[(mode, 'LABEL_0')]
             #n_data = self._tst_inputs[(mode, 'LABEL_1')]
-
-            if mode == 'train':
-                inputs.append([p_data[idx], n_data[idx]])
-            elif mode == 'infer':
-                inputs.append([p_data[idx], n_data[idx]])
-                # inputs.append([self.train_input_pos, self.train_input_neg])
+            if PAIR == True:
+                if mode == 'train':
+                    inputs.append([p_data[idx], n_data[idx]])
+                elif mode == 'infer':
+                    inputs.append([p_data[idx], n_data[idx]])
+                    # inputs.append([self.train_input_pos, self.train_input_neg])
+            else:
+                if mode == 'train':
+                    inputs.append(w_data[idx]) # tuple
+                elif mode == 'infer':
+                    inputs.append(w_data[idx])
                 
             idx += 1
-            idx %= len(p_data)
+            if PAIR == True:
+                idx %= len(p_data)
+            else:
+                idx %= len(w_data)
 
             if idx == 0:
-                random.shuffle(self._tst_inputs[(mode, 'LABEL_0')])
-                random.shuffle(self._tst_inputs[(mode, 'LABEL_1')])
+                if PAIR == True:
+                    random.Random(0).shuffle(self._tst_inputs[(mode, 'LABEL_0')])
+                    random.Random(0).shuffle(self._tst_inputs[(mode, 'LABEL_1')])
+                else:
+                    random.Random(0).shuffle(self._tst_inputs[mode])
 
-            self._tst_inputs_idx[(mode, label)] = idx
+            if PAIR == True:
+                self._tst_inputs_idx[(mode, label)] = idx
+            else:
+                self._tst_inputs_sep_idx[mode] = idx
         
         return inputs
 
@@ -3069,16 +3098,17 @@ class PLMClassifierReward(object):
     def forward(self, target_labels: List[str], prompts: List[str], to_tensor: bool, mode: str) -> Tuple[Union[List[float], FloatTensor], Dict[str, Any]]:
         if mode not in ["train", "infer"]:
             raise ValueError
+        PAIR = True
         # loading the dataset
         if self.experiment == "Test":
             source_strings = self._get_inputs(mode, target_labels)
         elif self.experiment == "FSL":
-            source_strings = self._get_few_shot_inputs(mode, target_labels, self.kshot)
+            source_strings = self._get_few_shot_inputs(mode, target_labels, self.kshot, PAIR)
         else:
             source_strings = self._get_full_inputs(mode, target_labels)
         # adding the prompt
         prompt_strings = self._convert_tokens_to_string(prompts)
-        formatted_prompts = self._format_prompts(source_strings, prompt_strings)
+        formatted_prompts = self._format_prompts(source_strings, prompt_strings, PAIR)
         probs = self._get_probs(formatted_prompts)
         
         rewards: List[FloatTensor] = []
@@ -3087,78 +3117,92 @@ class PLMClassifierReward(object):
             
         for batch_index in range(len(prompts)): # 1-shot: z-score always work, not needs to change code bone
             # new
-            pos_logits = probs[batch_index * 2, [self.pos_id, self.neg_id]]
-            neg_logits = probs[batch_index * 2 + 1, [self.pos_id, self.neg_id]]
-            pos_probs = torch.softmax(pos_logits, -1)
-            neg_probs = torch.softmax(neg_logits, -1)
-            '''
-            pos_probs = probs[batch_index * 2    ]
-            neg_probs = probs[batch_index * 2 + 1]
+            if PAIR:
+                pos_logits = probs[batch_index * 2, [self.pos_id, self.neg_id]]
+                neg_logits = probs[batch_index * 2 + 1, [self.pos_id, self.neg_id]]
+                pos_probs = torch.softmax(pos_logits, -1)
+                neg_probs = torch.softmax(neg_logits, -1)
+                '''
+                pos_probs = probs[batch_index * 2    ]
+                neg_probs = probs[batch_index * 2 + 1]
             
-            pos_pos_prob, pos_neg_prob = pos_probs[self.pos_id], pos_probs[self.neg_id]
-            neg_pos_prob, neg_neg_prob = neg_probs[self.pos_id], neg_probs[self.neg_id]
-            '''      
-            # UnBounded
-            # pos_reward = ((pos_pos_prob - pos_neg_prob) / (pos_neg_prob))
-            # neg_reward = ((neg_neg_prob - neg_pos_prob) / (neg_pos_prob))
+                pos_pos_prob, pos_neg_prob = pos_probs[self.pos_id], pos_probs[self.neg_id]
+                neg_pos_prob, neg_neg_prob = neg_probs[self.pos_id], neg_probs[self.neg_id]
+                '''      
+                # UnBounded
+                # pos_reward = ((pos_pos_prob - pos_neg_prob) / (pos_neg_prob))
+                # neg_reward = ((neg_neg_prob - neg_pos_prob) / (neg_pos_prob))
             
-            # new
-            pos_pos_prob, pos_neg_prob = pos_probs[0], pos_probs[1]
-            neg_pos_prob, neg_neg_prob = neg_probs[0], neg_probs[1]
-            print(pos_pos_prob,neg_neg_prob)
+                # new
+                pos_pos_prob, pos_neg_prob = pos_probs[0], pos_probs[1]
+                neg_pos_prob, neg_neg_prob = neg_probs[0], neg_probs[1]
+                print(pos_pos_prob,neg_neg_prob)
+             
+                # Bounded
+                pos_reward = torch.exp(pos_pos_prob)#-torch.exp(1-pos_pos_prob) #/ (pos_neg_prob + pos_pos_prob))
+                neg_reward = torch.exp(neg_neg_prob)#-torch.log(1-neg_neg_prob) #/ (neg_pos_prob + neg_neg_prob))
             
-            # Bounded
-            pos_reward = torch.exp(pos_pos_prob)#-torch.exp(1-pos_pos_prob) #/ (pos_neg_prob + pos_pos_prob))
-            neg_reward = torch.exp(neg_neg_prob)#-torch.log(1-neg_neg_prob) #/ (neg_pos_prob + neg_neg_prob))
-            
-            # balanced reward
-            pos_ratio = pos_pos_prob/pos_neg_prob
-            neg_ratio = neg_neg_prob/neg_pos_prob
+                # balanced reward
+                pos_ratio = pos_pos_prob/pos_neg_prob
+                neg_ratio = neg_neg_prob/neg_pos_prob
 
-            # bias exists, like our intermediate region in TST
-            # 7/3 * 7/3 , 0, 
-            '''
-            if pos_pos_prob >= 0.7: #and neg_neg_prob > 0.7:
-                pos_ratio = torch.tensor(7/3).to('cuda')
-            elif pos_pos_prob <= 0.4:
-                pos_ratio = torch.tensor(0).to('cuda')
-            if neg_neg_prob >=0.7:
-                neg_ratio = torch.tensor(7/3).to('cuda')
-            elif neg_neg_prob <= 0.4:
-                neg_ratio = torch.tensor(0).to('cuda')
-'''
-            # continuous reward
-            reward = (pos_pos_prob + neg_neg_prob) * 50
-            # piecewise reward
-            '''
-            if pos_pos_prob >= 0.5 and neg_neg_prob >= 0.5:# w/o shaping, [2+]
-                #if pos_pos_prob >=0.6 and neg_neg_prob >=0.6:
-                #    reward = 15+torch.log(pos_ratio*neg_ratio) # 5
-                #else:
-                reward = 2+torch.log(pos_ratio*neg_ratio)# / (torch.exp(torch.tensor(2,dtype=torch.float32))) 
-            elif (pos_pos_prob-0.5) * (neg_neg_prob-0.5)<0: # 
-                #print(pos_pos_prob, neg_neg_prob)
-            
-               # rel_scores = torch.softmax(torch.stack((pos_pos_prob,neg_neg_prob)),-1)
-               # reward = -torch.clip(torch.exp(torch.exp(torch.abs(rel_scores[0]-rel_scores[1]))),min=-9)#(pos_pos_prob-0.5)/(pos_neg_prob) * (neg_neg_prob-0.5)/(neg_pos_prob)
+                # bias exists, like our intermediate region in TST
+                # 7/3 * 7/3 , 0, 
+                '''
+                if pos_pos_prob >= 0.7: #and neg_neg_prob > 0.7:
+                    pos_ratio = torch.tensor(7/3).to('cuda')
+                elif pos_pos_prob <= 0.4:
+                    pos_ratio = torch.tensor(0).to('cuda')
+                if neg_neg_prob >=0.7:
+                    neg_ratio = torch.tensor(7/3).to('cuda')
+                elif neg_neg_prob <= 0.4:
+                    neg_ratio = torch.tensor(0).to('cuda')
+                '''
+                # continuous reward
+                #reward = (pos_pos_prob + neg_neg_prob) * 50
+                # piecewise reward
                 
-                if (pos_pos_prob - 0.5) < 0:
-                    reward = 1.5*torch.clip(torch.log(pos_pos_prob * 2),min=-5)
-                elif (neg_neg_prob-0.5) < 0:
-                    reward = 1.5 *torch.clip(torch.log(neg_neg_prob * 2), min=-5)
-            elif pos_pos_prob < 0.5 and neg_neg_prob < 0.5: # [-24,-11]
-                reward = 8*torch.clip(torch.log(pos_pos_prob*neg_neg_prob),min=-3) # clip:  #torch.tensor(-5).to('cuda')
-            '''
-            quantities_to_log["pp"].append(pos_pos_prob.item())
-            quantities_to_log["pn"].append(pos_neg_prob.item())
-            quantities_to_log["nn"].append(neg_neg_prob.item())
-            quantities_to_log["np"].append(neg_pos_prob.item())
-            quantities_to_log["reward"].append(reward.item())
+                if pos_pos_prob >= 0.5 and neg_neg_prob >= 0.5:# w/o shaping, [2+]
+                    if pos_pos_prob >=0.6 and neg_neg_prob >=0.6:
+                        reward = 2+torch.log(pos_ratio*neg_ratio) # 5
+                    else:
+                        reward = 2+torch.log(pos_ratio*neg_ratio)# / (torch.exp(torch.tensor(2,dtype=torch.float32))) 
+                elif (pos_pos_prob-0.5) * (neg_neg_prob-0.5)<0: # 
+                    #print(pos_pos_prob, neg_neg_prob)
+            
+                    # rel_scores = torch.softmax(torch.stack((pos_pos_prob,neg_neg_prob)),-1)
+                    # reward = -torch.clip(torch.exp(torch.exp(torch.abs(rel_scores[0]-rel_scores[1]))),min=-9)#(pos_pos_prob-0.5)/(pos_neg_prob) * (neg_neg_prob-0.5)/(neg_pos_prob)
+                
+                    if (pos_pos_prob - 0.5) < 0:
+                        reward = 1.5*torch.clip(torch.log(pos_pos_prob * 2),min=-5)
+                    elif (neg_neg_prob-0.5) < 0:
+                        reward = 1.5 *torch.clip(torch.log(neg_neg_prob * 2), min=-5)
+                elif pos_pos_prob < 0.5 and neg_neg_prob < 0.5: # [-24,-11]
+                    reward = 8*torch.clip(torch.log(pos_pos_prob*neg_neg_prob),min=-3) # clip:  #torch.tensor(-5).to('cuda')
+                
+                quantities_to_log["pp"].append(pos_pos_prob.item())
+                quantities_to_log["pn"].append(pos_neg_prob.item())
+                quantities_to_log["nn"].append(neg_neg_prob.item())
+                quantities_to_log["np"].append(neg_pos_prob.item())
+                quantities_to_log["reward"].append(reward.item())
+            else:
+                logit = probs[batch_index, [self.pos_id, self.neg_id]] # batch
+                pn_probs = torch.softmax(logit, -1)
+                label = source_strings[batch_index][1]
+     
+                pos_prob = pn_probs[0] if label == 1 else pn_probs[1]
+
+                reward = pos_prob * 50
+                quantities_to_log["prob"].append(pos_prob.item())
+                quantities_to_log["reward"].append(reward.item())
+
+
             input_rewards['a'] += [reward.item()]
             
             self._counter += 1
-        
-            print(prompts[batch_index], '\n', 
+
+            if PAIR == True:
+                print(prompts[batch_index], '\n', 
                   formatted_prompts[batch_index * 2], '\n', 
                   formatted_prompts[batch_index * 2 + 1], '\n', 
                   'PP:', pos_pos_prob.item(), '|',
@@ -3166,14 +3210,22 @@ class PLMClassifierReward(object):
                   'NN:', neg_neg_prob.item(), '|',
                   'NP:', neg_pos_prob.item(), '|',
                   'Reward:', round(reward.item(), 2))
+            else:
+                print(prompts[batch_index], '\n',
+                    formatted_prompts[batch_index], '\n',
+                    'Prob:', pos_prob.item(), '|',
+                    'Reward:', round(reward.item(),2))
             if mode == 'train':
                 rewards.append(reward)
             if mode == 'infer': # val score
-                pos_acc = torch.tensor(1) if pos_pos_prob >= 0.5 else torch.tensor(0)
-                neg_acc = torch.tensor(1) if neg_neg_prob >= 0.5 else torch.tensor(0)
+                if PAIR == True:
+                    pos_acc = torch.tensor(1) if pos_pos_prob >= 0.5 else torch.tensor(0)
+                    neg_acc = torch.tensor(1) if neg_neg_prob >= 0.5 else torch.tensor(0)
 
-                rewards.append((pos_acc+neg_acc)/2)
-                # add the prompts
+                    rewards.append((pos_acc+neg_acc)/2)
+                else:
+                    acc = torch.tensor(1).float() if pos_prob >= 0.5 else torch.tensor(0).float()
+                    rewards.append(acc)
 
             
         rewards_tensor = torch.stack(rewards)
@@ -3188,7 +3240,7 @@ class PLMClassifierReward(object):
                 # not source strings
                 idx_means = torch.tensor(input_reward_means['a']).float()
                 idx_stds = torch.tensor(input_reward_stds['a']).float()
-                rewards_tensor = (rewards_tensor - idx_means)/(idx_stds + 1e-4)
+                rewards_tensor = (rewards_tensor - idx_means)#/(idx_stds + 1e-4)
 
             for i in range(rewards_tensor.size(0)):
                 quantities_to_log['resized_reward'].append(rewards_tensor[i].item())
