@@ -33,7 +33,7 @@ class TXSoftQModel(SoftQModelBase):
             reward_shaping_max: float,
             beam_width: int,
             reward_name: str,
-            class_config: omegaconf.DictConfig,
+            #class_config: omegaconf.DictConfig,
             sql_loss_coefficients: Optional[float] = None,
             sql_loss_margin_constant: Optional[float] = None,
             sql_loss_margin_coefficient: Optional[float] = None,
@@ -44,6 +44,11 @@ class TXSoftQModel(SoftQModelBase):
             # Deprecated Arguments
             use_target_network: bool = True,
             target_sql_loss_impl: Optional[str] = None,
+            LM_type: str = 'distilgpt2',
+            experiment: str='Test',
+            experiment_seed: int = 0,
+            kshot: int = -1
+
     ) -> None:
         """
         Deprectaed Features:
@@ -83,7 +88,11 @@ class TXSoftQModel(SoftQModelBase):
             top_p=top_p,
             beam_width=beam_width,
             reward_name=reward_name,
-            class_config=class_config)
+            #class_config=class_config,
+            LM_type=LM_type,
+            experiment=experiment,
+            experiment_seed=experiment_seed,
+            kshot=kshot)
 
         if not (isinstance(self._model, Transformer) or isinstance(self._model, GPT2ConditionedMLP)):
             raise TypeError
@@ -315,7 +324,7 @@ class TXSoftQModel(SoftQModelBase):
                 sequence_lengths=sequence_lengths,
                 vocab=self._model.target_vocab)
 
-        rewards_tensor, rewards_log = self._reward_function(
+        rewards_tensor, rewards_log, prompt_strings = self._reward_function(
             sources=[" ".join(tokens) for tokens in source_texts],
             targets=[" ".join(tokens) for tokens in target_texts],
             predictions=output_texts,
