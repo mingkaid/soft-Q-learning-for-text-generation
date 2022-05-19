@@ -1,0 +1,7 @@
+Zeroshot Metrics: 0.18118333333333334
+Step: 100 | Loss: 1.4627047419548034 | Metrics: 0.5375
+Step: 100 | Loss: 1.6839966833591462 | Metrics: 0.55625
+Step: 200 | Loss: 1.543565222620964 | Metrics: 0.575
+Step: 300 | Loss: 1.3790859282016754 | Metrics: 0.6
+Step: 400 | Loss: 1.3371678292751312 | Metrics: 0.59375
+Test Metrics: {'acc': 0.62075}
