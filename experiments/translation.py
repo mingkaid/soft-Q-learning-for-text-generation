@@ -62,7 +62,8 @@ def _modify_model_config(config: omegaconf.DictConfig) -> None:
 
 
 # What's the type hint for Module?
-def prepare_data(config_data: Any) -> Tuple[tx.data.PairedTextData,
+def prepare_data(config_data: Any,
+                 device=device) -> Tuple[tx.data.PairedTextData,
                                             tx.data.PairedTextData,
                                             tx.data.PairedTextData,
                                             tx.data.TrainTestDataIterator]:
@@ -89,6 +90,7 @@ def prepare_model(
         max_source_length: int,
         max_decoding_length: int,
         use_behavior_model: bool = False,
+        device=device,
 ) -> TXSoftQModel:
     
     valid_models = ["transformer_small", "gpt2_conditioned_mlp"]
@@ -102,7 +104,8 @@ def prepare_model(
     if config.architecture in ["gpt2_conditioned_mlp"]:
         ModelClass: Callable = partial(
             GPT2ConditionedMLP,
-            config_name=config.architecture)
+            config_name=config.architecture,
+            device=0)
 
     behavior_model = None
     if use_behavior_model is True:
@@ -151,7 +154,7 @@ def prepare_model(
     #     model.load_checkpoint(config.base_checkpoint_path)
 
     if config.checkpoint_path is not None:
-        checkpoint = torch.load(config.checkpoint_path)
+        checkpoint = torch.load(config.checkpoint_path, map_location='cpu')
         model.load_state_dict(checkpoint["model_state_dict"])
         print(click.style(f"Loaded model from {config.checkpoint_path}", fg="green"))
 

@@ -571,32 +571,53 @@ class GPT2ConditionedMLP(nn.Module):
             
         # idx = 43
         idx = 0
+        # idx = 100
+        # idx = 200
+        # idx = 1000
+        # idx = 2000
+        # idx = 16
+        # idx = 32
         # size = len(self.dataset_inputs)
         # size = 16
+        size = 100
         # size = 500
-        size = 10000
+        # size = 1000
+        # size = 10000
         
-        sentences_train_0_sample = np.array(sentences_train_0)[train_0_selection].tolist()
-        sentences_train_1_sample = np.array(sentences_train_1)[train_1_selection].tolist()
+        # sentences_train_0_sample = np.array(sentences_train_0)[train_0_selection].tolist()
+        # sentences_train_1_sample = np.array(sentences_train_1)[train_1_selection].tolist()
         
+#         rng = np.random.default_rng(2022)
+#         size = len(sentences_train_0)
+#         sentences_train_0_sample = list(rng.choice(sentences_train_0, size=size, replace=False))
+#         size = len(sentences_train_1)
+#         sentences_train_1_sample = list(rng.choice(sentences_train_1, size=size, replace=False))
         
-        # sentences_train_0_sample = list(np.random.choice(sentences_train_0, size=size, replace=False))
-        # sentences_train_1_sample = list(np.random.choice(sentences_train_1, size=size, replace=False))
         # tst_inputs[('train', 'LABEL_0')] = sentences_test_ref_1[idx:(idx+size)]
+        size = len(sentences_train_1)
         tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
         # tst_inputs[('train', 'LABEL_0')] = sentences_train_1_sample
+        print(idx, size, tst_inputs[('train', 'LABEL_0')][:5])
         tst_inputs[('train', 'LABEL_0')] = list(itertools.chain(*[[s for _ in range(self.n_repeats)] \
                                                                    for s in tst_inputs[('train', 'LABEL_0')]]))
+        
         # tst_inputs[('train', 'LABEL_1')] = sentences_test_ref_0[idx:(idx+size)]
+        size = len(sentences_train_0)
         tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
         # tst_inputs[('train', 'LABEL_1')] = sentences_train_0_sample
+        print(idx, size, tst_inputs[('train', 'LABEL_1')][:5])
         tst_inputs[('train', 'LABEL_1')] = list(itertools.chain(*[[s for _ in range(self.n_repeats)] \
                                                                    for s in tst_inputs[('train', 'LABEL_1')]]))
+        
         # tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
         # tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:]
+        
         test_size = 16
         tst_inputs[('infer', 'LABEL_0')] = sentences_dev_1[idx:(idx+test_size)]
         tst_inputs[('infer', 'LABEL_1')] = sentences_dev_0[idx:(idx+test_size)]
+        
+        tst_inputs[('test', 'LABEL_0')] = sentences_test_ref_1
+        tst_inputs[('test', 'LABEL_1')] = sentences_test_ref_0
         
         return tst_inputs
         
@@ -660,7 +681,7 @@ class GPT2ConditionedMLP(nn.Module):
         if top_k is not None and top_p is not None:
             raise ValueError
             
-        print(self.logit_bias)
+        # print(self.logit_bias)
             
         state = last_token_hidden_state
         prompt_tokens, sample_ids, sample_logits = [], [], []
@@ -669,7 +690,7 @@ class GPT2ConditionedMLP(nn.Module):
             logits = self._mlp_forward(state)
             logits = logits + self.logit_bias
             # print(state.min().item(), state.max().item())
-            print(logits[:, 4:].min().item(), logits.max().item())
+            # print(logits[:, 4:].min().item(), logits.max().item())
             # print(logits.min().item(), logits.max().item())
             
             if top_k is not None: sampling_logits = _top_k_logits(logits, k=top_k)
@@ -736,9 +757,9 @@ class GPT2ConditionedMLP(nn.Module):
         for i in range(self.max_decoding_length): 
             # logits = self.mlp(state) # [batch_size, vocab_size]
             logits = self._mlp_forward(state)
-            if input_mode == 'infer': 
-                print('State:', state)
-                print('Logits:', logits)
+#             if input_mode == 'infer': 
+#                 print('State:', state)
+#                 print('Logits:', logits)
             
             # actions = torch.distributions.categorical.Categorical(logits).sample() # [batch_size]
             actions = logits.argmax(dim=-1) # [batch_size]
@@ -834,8 +855,8 @@ class GPT2ConditionedMLP(nn.Module):
         input_texts = self._get_inputs(input_mode, target_labels)
         # print(input_texts)
         
-        if input_mode == 'infer': 
-            print('Infer Inputs:', input_texts)
+#         if input_mode == 'infer': 
+#             print('Infer Inputs:', input_texts)
         
         # print('Model:', input_texts)
         

@@ -1,0 +1,55 @@
+Model,Data Size,Task,Machine,Seed,Checkpoint Path,Status,Note
+gpt2-xl,all,neg2pos,ec2-18,2,2022-05-02/23-32-32/outputs/outputs.232.pth,DONE,
+gpt2-xl,all,neg2pos,ec2-34,3,2022-05-02/23-19-02/outputs/outputs.232.pth,DONE,
+gpt2-xl,all,neg2pos,ec2-82,3,2022-05-08/01-50-29/outputs/outputs.232.pth,DONE,
+gpt2-xl,all,neg2pos,ec2-82,4,2022-05-02/22-39-22/outputs/outputs.232.pth,DONE,
+gpt2-xl,all,neg2pos,ec2-203,5,2022-05-09/02-56-07/outputs/outputs.232.pth,DONE,
+gpt2-xl,all,pos2neg,ec2-82,2,2022-04-29/14-26-13/outputs/outputs.94.pth,DONE,
+gpt2-xl,all,pos2neg,ec2-18,3,2022-05-07/19-26-36/outputs/outputs.116.pth,DONE,
+gpt2-xl,all,pos2neg,ec2-230,4,2022-05-09/02-46-03/outputs/outputs.116.pth,DONE,
+gpt2-large,all,neg2pos,ec2-94,3,2022-05-02/22-51-41/outputs/outputs.232.pth,DONE,
+gpt2-large,all,neg2pos,petuum-42,3,2022-05-02/22-48-37/outputs/outputs.226.pth,DONE,
+gpt2-large,all,neg2pos,petuum-203,2,2022-05-02/22-47-18/outputs/outputs.232.pth,DONE,
+gpt2-large,all,pos2neg,ec2-94,3,2022-05-07/19-16-07/outputs/outputs.116.pth,DONE,
+gpt2-large,all,pos2neg,ec2-82,2,2022-05-09/16-28-03/outputs/outputs.116.pth,DONE,
+gpt2-large,all,pos2neg,ec2-94,4,2022-05-09/17-51-42/outputs/outputs.116.pth,DONE,
+gpt2-medium,all,neg2pos,ec2-239,2,2022-05-10/14-31-13/outputs/outputs.232.pth,DONE,
+gpt2-medium,all,neg2pos,ec2-82,3,2022-05-04/20-35-39/outputs/outputs.232.pth,DONE,
+gpt2-medium,all,neg2pos,ec2-82,4,2022-05-04/20-36-23/outputs/outputs.232.pth,DONE,
+gpt2-medium,all,pos2neg,ec2-239,2,2022-05-07/19-32-23/outputs/outputs.116.pth,DONE,
+gpt2-medium,all,pos2neg,ec2-239,3,2022-05-07/19-32-31/outputs/outputs.116.pth,DONE,
+gpt2-medium,all,pos2neg,ec2-239,4,2022-05-10/14-31-34/outputs/outputs.116.pth,DONE,
+gpt2,all,neg2pos,petuum-42,2,2022-05-09/15-36-18/outputs/outputs.232.pth,DONE,
+gpt2,all,neg2pos,petuum-203,3,2022-05-09/16-34-18/outputs/outputs.116.pth,DONE,
+gpt2,all,neg2pos,petuum-203,4,2022-05-10/14-58-29/outputs/outputs.232.pth,DONE,
+gpt2,all,pos2neg,petuum-203,2,2022-05-07/19-42-27/outputs/outputs.116.pth,DONE,
+gpt2,all,pos2neg,petuum-42,3,2022-05-10/14-48-46/outputs/outputs.116.pth,DONE,
+gpt2,all,pos2neg,petuum-203,4,2022-05-12/16-12-01/outputs/outputs.116.pth,DONE,
+distilgpt2,all,neg2pos,petuum-42,2,2022-05-10/14-50-14/outputs/outputs.232.pth,DONE,
+distilgpt2,all,neg2pos,petuum-42,3,2022-05-07/19-39-20/outputs/outputs.116.pth,DONE,
+distilgpt2,all,neg2pos,petuum-203,4,2022-05-09/16-38-14/outputs/outputs.116.pth,DONE,
+distilgpt2,all,pos2neg,petuum-42,2,2022-05-07/19-37-18/outputs/outputs.116.pth,DONE,
+distilgpt2,all,pos2neg,petuum-42,3,2022-05-07/19-37-29/outputs/outputs.116.pth,DONE,
+distilgpt2,all,pos2neg,petuum-203,4,2022-05-09/16-36-20/outputs/outputs.116.pth,DONE,
+gpt2-xl,16,neg2pos,ec2-34,2,2022-05-07/19-21-41/outputs/outputs.232.pth,DONE,examples 0-15
+gpt2-xl,16,neg2pos,ec2-82,3,2022-05-09/15-52-51/outputs/outputs.232.pth,DONE,examples 32-47
+gpt2-xl,16,neg2pos,ec2-84,4,2022-05-09/02-51-03/outputs/outputs.232.pth,DONE,examples 16-31
+gpt2-xl,16,pos2neg,ec2-228,2,2022-05-07/19-23-59/outputs/outputs.58.pth,DONE,examples 0-15
+gpt2-xl,16,pos2neg,ec2-82,3,2022-05-09/15-52-10/outputs/outputs.116.pth,DONE,examples 32-47
+gpt2-xl,16,neg2pos,ec2-54,2,2022-05-11/13-58-25/outputs/outputs.232.pth,DONE,"examples 0-15, lr=1e-4"
+gpt2-xl,16,neg2pos,ec2-84,3,2022-05-16/16-28-41/outputs/outputs.232.pth,Running,"examples 16-31, lr=1e-4"
+gpt2-xl,16,neg2pos,ec2-203,4,2022-05-16/16-10-04/outputs/outputs.232.pth,Running,"examples 32-47, lr=1e-4"
+gpt2-xl,16,pos2neg,ec2-54,4,2022-05-09/02-53-15/outputs/outputs.116.pth,DONE,examples 16-31
+gpt2-xl,1k,neg2pos,ec2-82,2,2022-05-12/16-07-49/outputs/outputs.232.pth,Running,examples 2K-3K
+gpt2-xl,1k,neg2pos,ec2-18,3,2022-05-10/14-22-43/outputs/outputs.232.pth,DONE,examples 1K-2K
+gpt2-xl,1k,neg2pos,ec2-82,4,2022-05-05/01-22-49/outputs/outputs.232.pth,DONE,examples 0-1K
+gpt2-xl,1k,neg2pos,ec2-82,5,2022-05-05/01-47-28/outputs/outputs.232.pth,DONE,examples 0-1K
+gpt2-xl,1k,pos2neg,ec2-228,2,2022-05-12/16-01-06/outputs/outputs.116.pth,DONE,examples 0-1K
+gpt2-xl,1k,pos2neg,ec2-34,3,2022-05-12/16-03-17/outputs/outputs.116.pth,DONE,examples 1K-2K
+gpt2-xl,1k,pos2neg,ec2-82,4,2022-05-12/16-16-55/outputs/outputs.116.pth,DONE,examples 2K-3K
+gpt2-xl,100,neg2pos,ec2-230,2,2022-05-11/13-56-54/outputs/outputs.234.pth,DONE,examples 0-99
+gpt2-xl,100,neg2pos,ec2-34,3,2022-05-16/16-14-17/outputs/outputs.232.pth,Running,examples 100-199
+gpt2-xl,100,neg2pos,ec2-228,4,2022-05-16/16-25-20/outputs/outputs.232.pth,Running,examples 200-299
+gpt2-xl,100,pos2neg,ec2-54,2,2022-05-16/16-50-45/outputs/outputs.116.pth,Running,examples 0-99
+gpt2-xl,100,pos2neg,ec2-18,3,2022-05-16/16-20-25/outputs/outputs.116.pth,Running,examples 100-199
+gpt2-xl,100,pos2neg,ec2-239,4,2022-05-16/17-16-35/outputs/outputs.116.pth,Running,examples 200-299

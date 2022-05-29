@@ -1624,10 +1624,11 @@ class GPT2SentimentBLEUNoInputReward(object):
 
         # https://huggingface.co/gpt2
         # https://huggingface.co/facebook/bart-large-mnli
-        # generator_model = 'gpt2-xl'
+        generator_model = 'gpt2-xl'
         # generator_model = 'gpt2-large'
         # generator_model = 'gpt2-medium'
-        generator_model = 'distilgpt2'
+        # generator_model = 'distilgpt2'
+        print(generator_model)
         generator_device = 0
         evaluator_device = 0
         tokenizer = AutoTokenizer.from_pretrained(generator_model, pad_token='<|endoftext|>')
@@ -1953,31 +1954,47 @@ class GPT2SentimentBLEUNoInputReward(object):
             
         # idx = 43
         idx = 0
+        # idx = 100
+        # idx = 200
+        # idx = 1000
+        # idx = 2000
+        # idx = 16
+        # idx = 32
         # size = len(self.dataset_inputs)
         # size = 16
+        size = 100
         # size = 500
-        size = 10000
+        # size = 1000
+        # size = 10000
         
-        sentences_train_0_sample = np.array(sentences_train_0)[train_0_selection].tolist()
-        sentences_train_1_sample = np.array(sentences_train_1)[train_1_selection].tolist()
+        # sentences_train_0_sample = np.array(sentences_train_0)[train_0_selection].tolist()
+        # sentences_train_1_sample = np.array(sentences_train_1)[train_1_selection].tolist()
         
+#         rng = np.random.default_rng(2022)
+#         size = len(sentences_train_0)
+#         sentences_train_0_sample = list(rng.choice(sentences_train_0, size=size, replace=False))
+#         size = len(sentences_train_1)
+#         sentences_train_1_sample = list(rng.choice(sentences_train_1, size=size, replace=False))
         
-        # sentences_train_0_sample = list(np.random.choice(sentences_train_0, size=size, replace=False))
-        # sentences_train_1_sample = list(np.random.choice(sentences_train_1, size=size, replace=False))
         # tst_inputs[('train', 'LABEL_0')] = sentences_test_ref_1[idx:(idx+size)]
         size = len(sentences_train_1)
         tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:(idx+size)]
         # tst_inputs[('train', 'LABEL_0')] = sentences_train_1_sample
+        print(idx, size, tst_inputs[('train', 'LABEL_0')][:5])
         tst_inputs[('train', 'LABEL_0')] = list(itertools.chain(*[[s for _ in range(self.n_repeats)] \
                                                                    for s in tst_inputs[('train', 'LABEL_0')]]))
+        
         # tst_inputs[('train', 'LABEL_1')] = sentences_test_ref_0[idx:(idx+size)]
         size = len(sentences_train_0)
         tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:(idx+size)]
         # tst_inputs[('train', 'LABEL_1')] = sentences_train_0_sample
+        print(idx, size, tst_inputs[('train', 'LABEL_1')][:5])
         tst_inputs[('train', 'LABEL_1')] = list(itertools.chain(*[[s for _ in range(self.n_repeats)] \
                                                                    for s in tst_inputs[('train', 'LABEL_1')]]))
+        
         # tst_inputs[('train', 'LABEL_0')] = sentences_train_1[idx:]
         # tst_inputs[('train', 'LABEL_1')] = sentences_train_0[idx:]
+        
         test_size = 16
         tst_inputs[('infer', 'LABEL_0')] = sentences_dev_1[idx:(idx+test_size)]
         tst_inputs[('infer', 'LABEL_1')] = sentences_dev_0[idx:(idx+test_size)]

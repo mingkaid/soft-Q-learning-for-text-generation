@@ -94,7 +94,7 @@ class Evaluator():
             output_df['style_prob'] = probs
             
             correct = [int(prob >= 0.5) for prob in probs]
-            summary['style_acc'] = round(sum(correct) / len(correct), 2)
+            summary['style_acc'] = round(100 * sum(correct) / len(correct), 2)
         
         if evaluate_perplexity:
             print('Computing perplexity...')

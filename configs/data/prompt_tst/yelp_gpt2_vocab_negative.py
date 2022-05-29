@@ -41,11 +41,11 @@ test = {
     "batch_size": 16,
     "shuffle": False,
     "source_dataset": {
-        "files": os.path.join(base_path, "dev.source.negative"),
+        "files": os.path.join(base_path, "test.source.negative"),
         "vocab_file": source_vocab_file,
     },
     "target_dataset": {
-        "files": os.path.join(base_path, "dev.target.negative"),
+        "files": os.path.join(base_path, "test.target.negative"),
         "vocab_file": target_vocab_file,
     }
 }
